@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { readFileSync } from 'node:fs';
-import { inspectAirtableSchema } from '../server/airtable.js';
+import { AirtableRequestError, inspectAirtableSchema } from '../server/airtable.js';
 
 // Read metadata only. Never import participant data or modify Airtable.
 const env = {
@@ -24,9 +24,11 @@ try {
   const report = await inspectAirtableSchema(env);
   console.log(JSON.stringify(report, null, 2));
   if (!report.ok) process.exitCode = 1;
-} catch {
+} catch (error) {
   console.error(
-    'Read-only schema check failed. Check Airtable access and environment configuration. No Airtable data was changed.',
+    error instanceof AirtableRequestError
+      ? error.message
+      : 'Read-only schema check failed. Check Airtable access and environment configuration. No Airtable data was changed.',
   );
   process.exitCode = 1;
 }

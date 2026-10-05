@@ -373,8 +373,8 @@ async function request<T>(
       };
       response = await fetch(`https://api.airtable.com/v0/${path}`, options);
     } catch {
-      throw new Error(
-        'Airtable could not be reached within 15 seconds. The request remains queued for retry.',
+      throw new AirtableRequestError(
+        'Could not connect to Airtable, or the connection timed out. Check the hosting service network connection and retry.',
       );
     }
     if ((response.status === 429 || response.status >= 500) && attempt < 2) {
@@ -393,8 +393,8 @@ async function request<T>(
     }
     if (!response.ok) {
       const guidance: Record<number, string> = {
-        401: 'Check the server-side personal access token.',
-        403: 'Check token scopes and base access.',
+        401: 'Airtable rejected the personal access token. Check AIRTABLE_PAT in Render contains the complete, current token value, without quotes.',
+        403: 'Check the token has access to the Mates That Matter base and the required scopes: schema.bases:read for field checks, data.records:read for imports, and data.records:write for synchronization. Also verify AIRTABLE_BASE_ID in Render.',
         404: 'Check the configured base, table and record IDs.',
         422: 'Check field mappings, writable field types, select options and linked record IDs.',
         429: 'Airtable is rate limiting requests; retry the queued request later.',

@@ -1723,3 +1723,81 @@ test('coordinators manage assignable workers without granting login access or re
     await app.close();
   }
 });
+
+test('staff see safe Airtable connection diagnostics without upstream data or credentials', async (context) => {
+  const previous = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key.startsWith('AIRTABLE_')),
+  );
+  for (const key of Object.keys(process.env))
+    if (key.startsWith('AIRTABLE_')) delete process.env[key];
+  Object.assign(process.env, {
+    AIRTABLE_PAT: 'fake-diagnostic-test-token',
+    AIRTABLE_BASE_ID: 'app12345678901234',
+    AIRTABLE_PARTICIPANTS_TABLE: 'Participants',
+  });
+  const originalFetch = globalThis.fetch;
+  let mode: number | 'network' = 403;
+  context.mock.method(
+    globalThis,
+    'fetch',
+    async (resource: string | URL | globalThis.Request, init?: RequestInit) => {
+      const url = new URL(
+        typeof resource === 'string'
+          ? resource
+          : resource instanceof URL
+            ? resource.href
+            : resource.url,
+      );
+      if (url.hostname !== 'api.airtable.com') return originalFetch(resource, init);
+      if (mode === 'network')
+        throw new Error('private participant data fake-diagnostic-test-token');
+      return new Response('private participant data fake-diagnostic-test-token', { status: mode });
+    },
+  );
+  let app: Awaited<ReturnType<typeof fixture>> | undefined;
+  try {
+    app = await fixture({ demoMode: false, enableSync: false });
+    app.store.putUser({
+      id: 'diagnostic-staff',
+      email: 'coordinator@example.test',
+      name: 'Coordinator',
+      role: 'staff',
+      participantIds: [],
+      passwordHash: hashPassword(password),
+    });
+    const staff = app.session();
+    assert.equal(
+      (await staff('POST', '/api/auth/login', { email: 'coordinator@example.test', password }))
+        .status,
+      200,
+    );
+    assert.equal((await app.session()('GET', '/api/integrations/airtable/schema')).status, 401);
+    for (const [failure, guidance] of [
+      [401, /HTTP 401.*AIRTABLE_PAT/],
+      [403, /HTTP 403.*schema\.bases:read/],
+      [404, /HTTP 404.*base/],
+      ['network', /connection timed out/],
+    ] as const) {
+      mode = failure;
+      for (const [method, route] of [
+        ['GET', 'schema'],
+        ['POST', 'import'],
+      ] as const) {
+        const result = await staff<{ error: string }>(
+          method,
+          `/api/integrations/airtable/${route}`,
+        );
+        assert.equal(result.status, 502);
+        assert.match(result.body.error, guidance);
+        assert.doesNotMatch(result.body.error, /private participant|fake-diagnostic-test-token/);
+      }
+    }
+    assert.equal(app.store.all('participants').length, 0);
+  } finally {
+    if (app) await app.close();
+    context.mock.restoreAll();
+    for (const key of Object.keys(process.env))
+      if (key.startsWith('AIRTABLE_')) delete process.env[key];
+    Object.assign(process.env, previous);
+  }
+});

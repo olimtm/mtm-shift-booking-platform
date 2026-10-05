@@ -807,7 +807,9 @@ export function createApp(options: AppOptions = {}) {
         fail(409, 'Configure Airtable access and table mappings in environment settings first.');
       try {
         res.json(await inspectAirtableSchema());
-      } catch {
+      } catch (error) {
+        if (error instanceof AirtableRequestError)
+          fail(502, `${error.message} No Airtable data was changed.`);
         fail(
           502,
           'Could not inspect Airtable. Check the configured base, token permissions, and table names.',
@@ -824,7 +826,9 @@ export function createApp(options: AppOptions = {}) {
       let snapshot: Awaited<ReturnType<typeof readAirtableSnapshot>>;
       try {
         snapshot = await readAirtableSnapshot();
-      } catch {
+      } catch (error) {
+        if (error instanceof AirtableRequestError)
+          fail(502, `${error.message} No portal records were changed.`);
         fail(
           502,
           'Could not import Airtable data. Check table mappings, linked records, dates, and support or RSVP status values. No portal records were changed.',
