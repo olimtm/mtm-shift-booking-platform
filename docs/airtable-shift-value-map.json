@@ -1,0 +1,10 @@
+{
+  "status": {
+    "requested": "New",
+    "confirmed": "Organised",
+    "declined": "Declined",
+    "cancelled": "Cancelled"
+  },
+  "kind": { "general": "General Support", "event": "Event Support" },
+  "source": { "client": "Client Portal", "staff": "Office", "event": "Circle RSVP" }
+}

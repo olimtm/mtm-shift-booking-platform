@@ -1,0 +1,40 @@
+name: Portal checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --include=dev
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:accounts
+      - name: Booking and worker browser checks
+        env:
+          DEMO_MODE: 'true'
+          AIRTABLE_SYNC_ENABLED: 'false'
+          DATABASE_PATH: /tmp/mtm-ci-demo.sqlite
+          PUBLIC_ORIGIN: http://127.0.0.1:3001
+          BROWSER_BASE_URL: http://127.0.0.1:3001
+          PORT: '3001'
+        run: |
+          npm start > /tmp/mtm-ci-server.log 2>&1 &
+          portal_pid=$!
+          trap 'kill "$portal_pid"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3001/api/health; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3001/api/health
+          npm run test:browser

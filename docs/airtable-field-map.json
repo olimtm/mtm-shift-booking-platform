@@ -1,0 +1,36 @@
+{
+  "participants": { "name": "Full Name", "supportType": "1:1 Support" },
+  "shifts": {
+    "portalId": "Portal request ID",
+    "participant": "Participant",
+    "start": "Requested Start",
+    "end": "Requested End",
+    "description": "Request Notes",
+    "location": "Location",
+    "driving": "Driving preference",
+    "gender": "Worker Gender Preference",
+    "notes": "Portal notes",
+    "kind": "Support Type",
+    "status": "Request Status",
+    "source": "Request Source",
+    "event": "Event",
+    "staffName": null,
+    "staff": "Assigned Staff",
+    "pendingChange": "Pending change",
+    "updatedAt": "Portal updated at"
+  },
+  "events": {
+    "name": "Name",
+    "start": "Start",
+    "end": "End",
+    "location": "Address",
+    "description": null,
+    "status": "Stage"
+  },
+  "rsvps": {
+    "participant": "Participant",
+    "event": "Event",
+    "status": "Circle RSVP",
+    "cancelledAt": "Cancelled"
+  }
+}
