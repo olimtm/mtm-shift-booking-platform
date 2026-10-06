@@ -1,3 +1,4 @@
+import { LOCATION_MAX_LENGTH } from '../shared/limits.js';
 import { useState, type FormEvent } from 'react';
 import {
   CalendarDays,
@@ -155,7 +156,7 @@ export function ShiftForm({
               value={values.location}
               onChange={(e) => change('location', e.target.value)}
               placeholder="Address or meeting point"
-              maxLength={300}
+              maxLength={LOCATION_MAX_LENGTH}
             />
           </label>
         </div>
@@ -661,7 +662,7 @@ export function EventForm({
           <input
             value={values.location}
             onChange={(e) => setValues({ ...values, location: e.target.value })}
-            maxLength={300}
+            maxLength={LOCATION_MAX_LENGTH}
           />
         </label>
         <label>

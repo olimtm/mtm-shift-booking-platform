@@ -727,3 +727,47 @@ test('blank support switches stay hidden and Recommended requires the explicit n
     ['none', 'none'],
   );
 });
+
+test('initial import preserves extended event and existing shift locations and rejects over-limit data', async (t) => {
+  const { LOCATION_MAX_LENGTH } = await import('../../shared/limits.js');
+  const fixture = importFixture();
+  const location =
+    'Community venue, meeting instructions. '.repeat(60).slice(0, LOCATION_MAX_LENGTH - 1) + '.';
+  fixture.events.records[0].fields.Location = location;
+  fixture.schema.tables
+    .find((table) => table.name === 'Shift Requests')!
+    .fields.push({ id: 'fldLocation', name: 'Location', type: 'singleLineText' });
+  fixture.shifts.records.push({
+    id: 'rec55555555555555',
+    fields: {
+      Participant: ['rec11111111111111'],
+      Start: '2026-10-10T09:30:00+11:00',
+      End: '2026-10-10T12:30:00+11:00',
+      'Support description': 'Existing approved support',
+      Status: 'Approved',
+      Location: location,
+    },
+  });
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    assert.equal(init.method, undefined, 'import must remain read only');
+    return Response.json(
+      url.includes('/meta/')
+        ? fixture.schema
+        : url.includes('/People?')
+          ? fixture.people
+          : url.includes('/Events?')
+            ? fixture.events
+            : url.includes('/Shift%20Requests?')
+              ? fixture.shifts
+              : fixture.rsvps,
+    );
+  });
+  const snapshot = await readAirtableSnapshot(env);
+  assert.equal(snapshot.events[0].location, location);
+  assert.equal(snapshot.shifts[0].location, location);
+  fixture.events.records[0].fields.Location = location + 'x';
+  await assert.rejects(readAirtableSnapshot(env), /valid location text value/);
+  fixture.events.records[0].fields.Location = location;
+  fixture.shifts.records[0].fields.Location = location + 'x';
+  await assert.rejects(readAirtableSnapshot(env), /valid location text value/);
+});

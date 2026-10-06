@@ -1801,3 +1801,66 @@ test('staff see safe Airtable connection diagnostics without upstream data or cr
     Object.assign(process.env, previous);
   }
 });
+
+test('long locations survive client requests, approval, edits and event creation without truncation', async () => {
+  const { LOCATION_MAX_LENGTH } = await import('../../shared/limits.js');
+  const app = await fixture();
+  try {
+    const client = app.session(),
+      staff = app.session();
+    await login(client, 'client');
+    await login(staff, 'staff');
+    const location = 'Community centre. '.repeat(120).slice(0, LOCATION_MAX_LENGTH - 1) + '.';
+    const values = input('p-alex', { location });
+    const created = await client<{ shift: Shift }>('POST', '/api/shifts', values);
+    assert.equal(created.status, 201);
+    assert.equal(created.body.shift.location, location);
+    assert.equal(
+      (await staff('PATCH', `/api/shifts/${created.body.shift.id}`, { action: 'approve' })).status,
+      200,
+    );
+    const changed = location.slice(0, -1) + '!';
+    assert.equal(
+      (
+        await client('PATCH', `/api/shifts/${created.body.shift.id}`, {
+          action: 'edit',
+          values: { ...values, location: changed },
+        })
+      ).status,
+      200,
+    );
+    assert.equal(app.store.get('shifts', created.body.shift.id)?.location, location);
+    const approved = await staff<{ shift: Shift }>(
+      'PATCH',
+      `/api/shifts/${created.body.shift.id}`,
+      { action: 'approve_change' },
+    );
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.shift.location, changed);
+    assert.equal(
+      (await client('POST', '/api/shifts', { ...values, location: location + 'x' })).status,
+      400,
+    );
+    const event = await staff<{ event: SupportEvent }>('POST', '/api/events', {
+      title: 'Fictional event',
+      start: values.start,
+      end: values.end,
+      location,
+    });
+    assert.equal(event.status, 201);
+    assert.equal(event.body.event.location, location);
+    assert.equal(
+      (
+        await staff('POST', '/api/events', {
+          title: 'Fictional event',
+          start: values.start,
+          end: values.end,
+          location: location + 'x',
+        })
+      ).status,
+      400,
+    );
+  } finally {
+    await app.close();
+  }
+});

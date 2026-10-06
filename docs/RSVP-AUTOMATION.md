@@ -21,9 +21,9 @@ Your Airtable PAT is a separate credential, used by the server to read/write Air
 
 For each automation below:
 
-1. Open the base's **Automations** tab, choose **Create automation**, and give it the name shown below. Leave it switched off during setup.
+1. Open the base's **Automations** tab and select the existing draft with the name shown below. Do not create a duplicate. Leave it switched off during setup.
 2. Configure and test the trigger with a designated test record.
-3. Add an action: **Run a script**. Paste the contents of [airtable-rsvp.js](../automation/airtable-rsvp.js) into the editor.
+3. Open the existing **Run a script** action and replace its placeholder with the contents of [airtable-rsvp.js](../automation/airtable-rsvp.js) into the editor.
 4. Add an ordinary input variable named **portalUrl** with your actual HTTPS `.onrender.com` address from Render. Use the root address, not a login/invitation link.
 5. Add the record-ID input specified below. Use the trigger's **Airtable record ID** dynamic value, not the participant's name, event name, or URL.
 6. Add the secret **portalWebhookSecret** as described above. Save the script. Test the action only with the intended test record: a successful test really sends the update to the portal.
@@ -80,3 +80,7 @@ The portal checks whether the participant has **Events** or **Both** support ena
 No Zapier automation is needed when these RSVPs already reach Airtable. Check the base's existing automations before turning these on: Shift Requests already contains event/RSVP links, so there may already be a request-creation automation. The connector confirmed the legacy request creator is deployed. No automation was changed during the recovery session; external Zapier jobs have not been inspected. Disable or reconcile any existing automation that creates the same event support shifts; the portal can prevent duplicate webhook requests but cannot prevent an independent Airtable automation from creating its own duplicate record.
 
 For an event with many RSVPs, the event script may exceed Airtable's execution or fetch limits. Check your plan's limits and test a representative event; batch delivery would need to be added if those limits are exceeded. A failed run can have delivered some records before failing; retries use stable identities, but always resolve the reported cause first. The script rereads current events, although simultaneous automation runs are not a globally ordered change stream.
+
+## Event address validation
+
+The portal, initial import, forms and current automation script accept event addresses and meeting instructions up to **2,000 characters**. Earlier releases limited these to 300, which rejected existing event addresses. Deploy the latest portal code in Render and replace the script in all three Airtable actions when updating from that release. Preserve the existing record-ID inputs, portal URL and secret. Addresses are not silently shortened. Event names must still contain 2–200 characters, and Start/End must span no more than 47 hours.

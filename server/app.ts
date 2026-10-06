@@ -1,3 +1,4 @@
+import { LOCATION_MAX_LENGTH } from '../shared/limits.js';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -41,7 +42,7 @@ const shiftInputSchema = z
     start: timestamp,
     end: timestamp,
     description: z.string().trim().min(3).max(3000),
-    location: z.string().trim().max(300).default(''),
+    location: z.string().trim().max(LOCATION_MAX_LENGTH).default(''),
     driving: z.enum(['required', 'not_required', 'no_preference']),
     gender: z.enum(['female', 'male', 'no_preference']),
     notes: z.string().trim().max(3000).default(''),
@@ -53,7 +54,7 @@ const eventSchema = z
     title: z.string().trim().min(2).max(200),
     start: timestamp,
     end: timestamp,
-    location: z.string().trim().max(300).default(''),
+    location: z.string().trim().max(LOCATION_MAX_LENGTH).default(''),
     description: z.string().trim().max(3000).default(''),
   })
   .strict();

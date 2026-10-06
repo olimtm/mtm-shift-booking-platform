@@ -141,7 +141,8 @@ try {
   await dialog.getByLabel('What would you like support with?').fill(description);
   await dialog.getByLabel('Driving preference').selectOption('required');
   await dialog.getByLabel('Support worker preference').selectOption('male');
-  await dialog.getByLabel('Meeting place').fill('Newcastle library');
+  const meetingPlace = 'Newcastle library; meet near the main entrance. '.repeat(12).trim();
+  await dialog.getByLabel('Meeting place').fill(meetingPlace);
   await dialog.getByRole('button', { name: 'Send support request' }).click();
   await expect(dialog.getByRole('alert')).toContainText('end time must be after the start time');
   await dialog.getByLabel('Ends').fill(`${day}T13:00`);
@@ -152,6 +153,7 @@ try {
   assert.equal(created.status, 'requested');
   assert.equal(created.driving, 'required');
   assert.equal(created.gender, 'male');
+  assert.equal(created.location, meetingPlace, 'Long meeting instructions are preserved');
   const originalStart = created.start;
   await staff.reload();
   dialog = await openRequest(staff, description);

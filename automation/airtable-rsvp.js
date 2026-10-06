@@ -71,8 +71,8 @@ for (const rsvp of records) {
       'Events > Name must contain between 2 and 200 characters. Check the Name field on the linked event, not just its primary display label.',
     );
   }
-  if (location.length > 300) {
-    throw new Error('Events > Address must contain at most 300 characters.');
+  if (location.length > 2000) {
+    throw new Error('Events > Address must contain at most 2000 characters.');
   }
   if (Date.parse(end) - Date.parse(start) > 47 * 60 * 60 * 1000) {
     throw new Error(
@@ -107,7 +107,7 @@ for (const rsvp of records) {
           if (body.error.startsWith('event.title:'))
             detail = 'Check Events > Name: it must contain between 2 and 200 characters.';
           else if (body.error.startsWith('event.location:'))
-            detail = 'Check Events > Address: it must contain at most 300 characters.';
+            detail = 'Check Events > Address: it must contain at most 2000 characters.';
           else if (body.error.startsWith('event.start:') || body.error.startsWith('event.end:'))
             detail = 'Check that Events > Start and End are valid dates and times.';
           else if (body.error === 'End must be after start, with a duration of at most 47 hours.')

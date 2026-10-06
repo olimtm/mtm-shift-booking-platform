@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { once } from 'node:events';
+import { LOCATION_MAX_LENGTH } from '../../shared/limits.js';
 
 // Run the actual Airtable script with mocked platform globals. No network access.
 const source = readFileSync(new URL('../../automation/airtable-rsvp.js', import.meta.url), 'utf8');
@@ -196,7 +197,7 @@ test('script identifies invalid event fields before sending rejected requests', 
     [{ Name: '' }, /Events > Name/],
     [{ Name: ' ' }, /Events > Name/],
     [{ Name: 'x'.repeat(201) }, /Events > Name/],
-    [{ Address: 'x'.repeat(301) }, /Events > Address/],
+    [{ Address: 'x'.repeat(LOCATION_MAX_LENGTH + 1) }, /Events > Address/],
     [{ End: '2026-10-13T12:00:00+11:00' }, /span more than 47 hours/],
   ] as const) {
     const f = fixture({ event });
@@ -229,6 +230,8 @@ test('script translates known server validation without exposing response data',
 test('actual Airtable script delivers to the actual portal and retries one buffered request', async () => {
   const { createApp } = await import('../app.js');
   const secret = 'FictionalWebhookSecret-2026-TestOnly-42';
+  const location =
+    'Community centre, main entrance. '.repeat(70).slice(0, LOCATION_MAX_LENGTH - 1) + '.';
   const app = createApp({
     databasePath: ':memory:',
     demoMode: false,
@@ -250,6 +253,7 @@ test('actual Airtable script delivers to the actual portal and retries one buffe
     const address = server.address() as { port: number };
     const f = fixture({
       secret,
+      event: { Address: location },
       deliver: (body, headers) =>
         fetch(`http://127.0.0.1:${address.port}/api/webhooks/rsvp`, {
           method: 'POST',
@@ -264,6 +268,8 @@ test('actual Airtable script delivers to the actual portal and retries one buffe
     assert.equal(shifts[0].start, '2026-10-09T22:30:00.000Z');
     assert.equal(shifts[0].end, '2026-10-10T01:30:00.000Z');
     assert.equal(shifts[0].status, 'requested');
+    assert.equal(shifts[0].location, location);
+    assert.equal(app.store.all('events')[0].location, location);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     app.close();

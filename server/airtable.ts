@@ -1,3 +1,4 @@
+import { LOCATION_MAX_LENGTH } from '../shared/limits.js';
 import type { Participant, Shift, StaffMember, SupportType } from '../shared/types.ts';
 import { outboundDispatcher } from './network.ts';
 
@@ -813,7 +814,7 @@ export async function readAirtableSnapshot(
       title,
       start: new Date(startTime).toISOString(),
       end: new Date(endTime).toISOString(),
-      location: text('events', record, 'location', index, 300, false),
+      location: text('events', record, 'location', index, LOCATION_MAX_LENGTH, false),
       description: text('events', record, 'description', index, 3000, false),
     });
   }
@@ -990,7 +991,7 @@ export async function readAirtableSnapshot(
       start: new Date(startTime).toISOString(),
       end: new Date(endTime).toISOString(),
       description: text('shifts', record, 'description', index, 3000),
-      location: text('shifts', record, 'location', index, 300, false),
+      location: text('shifts', record, 'location', index, LOCATION_MAX_LENGTH, false),
       notes: text('shifts', record, 'notes', index, 3000, false),
       kind,
       status: select(record, 'status', index, config.shiftStatusValues),
