@@ -49,12 +49,21 @@ import { Avatar, Empty, ErrorNotice, Spinner, Status, supportLabels } from './ui
 import Schedule, { ShiftList } from './Schedule';
 import { EventDetail, EventForm, ParticipantForm, ShiftDetail, ShiftForm } from './forms';
 import Workers from './Workers';
+import WorkerPortal from './WorkerPortal';
+import ShiftUpdatesPage from './ShiftUpdates';
 import Brand from './Brand';
 import { isActiveParticipant, isPastSupport, shiftTitle } from '../shared/views';
 import Accounts, { FirstSetup, AcceptInvitation } from './Accounts';
 
 type Page =
-  'schedule' | 'requests' | 'participants' | 'events' | 'integration' | 'accounts' | 'workers';
+  | 'schedule'
+  | 'requests'
+  | 'participants'
+  | 'events'
+  | 'integration'
+  | 'accounts'
+  | 'workers'
+  | 'updates';
 const pageNames: Record<Page, string> = {
   schedule: 'Support schedule',
   requests: 'Requests',
@@ -63,6 +72,7 @@ const pageNames: Record<Page, string> = {
   integration: 'Airtable connection',
   accounts: 'People & access',
   workers: 'Support workers',
+  updates: 'Shift updates',
 };
 
 function Login({
@@ -374,6 +384,8 @@ export default function App() {
     );
   if (setupRequired && !data) return <FirstSetup onComplete={completeAccountSetup} />;
   if (!data) return <Login demoMode={demoMode} onLogin={login} />;
+  if (data.user.role === 'worker')
+    return <WorkerPortal data={data} refresh={refresh} onLogout={logout} error={globalError} />;
   const today = dayKey(new Date(), data.timezone);
   const weekStart = Date.parse(zonedIso(`${week}T00:00`, data.timezone));
   const weekEnd = Date.parse(zonedIso(`${addDays(week, 7)}T00:00`, data.timezone));
@@ -411,6 +423,7 @@ export default function App() {
   const navItems: { page: Page; label: string; icon: typeof CalendarDays; count?: number }[] = [
     { page: 'schedule', label: staff ? 'Support schedule' : 'My support', icon: CalendarDays },
     { page: 'requests', label: 'Requests', icon: Inbox, count: pending.length },
+    { page: 'updates', label: 'Shift updates', icon: HeartHandshake },
     ...(staff ? [{ page: 'participants' as Page, label: 'Participants', icon: UsersRound }] : []),
     ...(staff ? [{ page: 'accounts' as Page, label: 'People & access', icon: ShieldCheck }] : []),
     ...(staff ? [{ page: 'workers' as Page, label: 'Support workers', icon: UsersRound }] : []),
@@ -550,29 +563,32 @@ export default function App() {
                 {staff ? pageNames[page] : page === 'schedule' ? 'My support' : pageNames[page]}
               </h1>
             </div>
-            {page !== 'integration' && page !== 'accounts' && page !== 'workers' && (
-              <button
-                className="primary-button new-request-button"
-                onClick={() =>
-                  page === 'participants'
-                    ? setParticipantForm(true)
+            {page !== 'integration' &&
+              page !== 'accounts' &&
+              page !== 'workers' &&
+              page !== 'updates' && (
+                <button
+                  className="primary-button new-request-button"
+                  onClick={() =>
+                    page === 'participants'
+                      ? setParticipantForm(true)
+                      : page === 'events' && staff
+                        ? setEventForm(true)
+                        : setShiftForm({
+                            participant: participantId === 'all' ? undefined : participantId,
+                          })
+                  }
+                >
+                  <Plus size={18} />
+                  {page === 'participants'
+                    ? 'Add participant'
                     : page === 'events' && staff
-                      ? setEventForm(true)
-                      : setShiftForm({
-                          participant: participantId === 'all' ? undefined : participantId,
-                        })
-                }
-              >
-                <Plus size={18} />
-                {page === 'participants'
-                  ? 'Add participant'
-                  : page === 'events' && staff
-                    ? 'Create event'
-                    : staff
-                      ? 'New shift request'
-                      : 'Request support'}
-              </button>
-            )}
+                      ? 'Create event'
+                      : staff
+                        ? 'New shift request'
+                        : 'Request support'}
+                </button>
+              )}
           </div>
           {globalError && (
             <div className="global-error">
@@ -1014,6 +1030,7 @@ export default function App() {
               )}
             </>
           )}
+          {page === 'updates' && <ShiftUpdatesPage data={data} onSaved={refresh} />}
           {page === 'workers' && staff && <Workers data={data} onSaved={refresh} />}
           {page === 'accounts' && staff && <Accounts data={data} />}
           {page === 'integration' && staff && (

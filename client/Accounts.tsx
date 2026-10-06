@@ -12,6 +12,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import type { DashboardData, User } from '../shared/types';
+import { isActiveWorker } from '../shared/views';
 import { api, patch, post } from './api';
 import { fmt } from './dates';
 import { Avatar, Empty, ErrorNotice, Modal, Spinner } from './ui';
@@ -348,7 +349,7 @@ export default function Accounts({ data }: { data: DashboardData }) {
         <div className="info-notice">
           <ShieldCheck size={18} />
           <span>
-            Each client sees only the participants you link to their account. Coordinators can
+            Clients see linked participants. Support workers see their assigned shifts. Coordinators
             manage the whole workspace.
           </span>
         </div>
@@ -376,13 +377,15 @@ export default function Accounts({ data }: { data: DashboardData }) {
                 <span>
                   {account.role === 'staff'
                     ? 'Coordinator · full workspace access'
-                    : account.participantIds
-                        .map(
-                          (id) =>
-                            data.participants.find((p) => p.id === id)?.name ||
-                            'Linked participant',
-                        )
-                        .join(', ') || 'No participants linked'}
+                    : account.role === 'worker'
+                      ? `Support worker · ${data.staff.find((w) => w.id === account.workerId)?.name || 'Linked worker'} · assigned shifts only`
+                      : account.participantIds
+                          .map(
+                            (id) =>
+                              data.participants.find((p) => p.id === id)?.name ||
+                              'Linked participant',
+                          )
+                          .join(', ') || 'No participants linked'}
                 </span>
               </div>
               <div className="account-actions">
@@ -505,13 +508,15 @@ function InviteForm({
   onSave: (values: {
     name: string;
     email: string;
-    role: 'staff' | 'client';
+    role: User['role'];
     participantIds: string[];
+    workerId?: string;
   }) => Promise<void>;
 }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'staff' | 'client'>('client');
+  const [role, setRole] = useState<User['role']>('client');
+  const [workerId, setWorkerId] = useState('');
   const [participantIds, setParticipantIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -520,7 +525,13 @@ function InviteForm({
     setError('');
     setBusy(true);
     try {
-      await onSave({ name, email, role, participantIds: role === 'staff' ? [] : participantIds });
+      await onSave({
+        name,
+        email,
+        role,
+        participantIds: role === 'client' ? participantIds : [],
+        ...(role === 'worker' ? { workerId } : {}),
+      });
     } catch (error) {
       setError((error as Error).message);
     } finally {
@@ -556,13 +567,32 @@ function InviteForm({
         </label>
         <label>
           Account type
-          <select value={role} onChange={(e) => setRole(e.target.value as 'staff' | 'client')}>
+          <select value={role} onChange={(e) => setRole(e.target.value as User['role'])}>
             <option value="client">Client or representative</option>
+            <option value="worker">Support worker</option>
             <option value="staff">Staff coordinator</option>
           </select>
         </label>
         {role === 'client' ? (
           <ParticipantChoices data={data} selected={participantIds} onChange={setParticipantIds} />
+        ) : role === 'worker' ? (
+          <>
+            <label>
+              Linked support worker
+              <select value={workerId} required onChange={(e) => setWorkerId(e.target.value)}>
+                <option value="">Choose a worker</option>
+                {data.staff.filter(isActiveWorker).map((worker) => (
+                  <option value={worker.id} key={worker.id}>
+                    {worker.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="field-hint">
+              This account can view assigned shifts and publish post-shift updates. It cannot
+              approve bookings or manage accounts.
+            </p>
+          </>
         ) : (
           <div className="info-notice">
             <ShieldCheck size={17} />
@@ -579,7 +609,11 @@ function InviteForm({
           </button>
           <button
             className="primary-button"
-            disabled={busy || (role === 'client' && !participantIds.length)}
+            disabled={
+              busy ||
+              (role === 'client' && !participantIds.length) ||
+              (role === 'worker' && !workerId)
+            }
           >
             {busy ? <Spinner /> : <Plus size={16} />}Create invitation link
           </button>

@@ -24,6 +24,7 @@ jobs:
       - run: npm run test:qol
       - run: npm run test:appearance
       - run: npm run test:workers
+      - run: npm run test:shift-updates
       - name: Booking and worker browser checks
         env:
           DEMO_MODE: 'true'

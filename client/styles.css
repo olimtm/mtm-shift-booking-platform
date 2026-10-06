@@ -21,6 +21,229 @@
   --control-line: color-mix(in srgb, var(--mtm-navy) 27%, var(--white));
   --shadow-raised: color-mix(in srgb, var(--mtm-navy) 9%, transparent);
 }
+
+/* Worker portal and shared shift updates use the existing MTM palette. */
+.worker-portal {
+  min-height: 100vh;
+  background: var(--surface);
+}
+.worker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px max(24px, calc((100vw - 1080px) / 2));
+  background: var(--white);
+  border-bottom: 1px solid var(--line);
+}
+.worker-header > div {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.worker-header .brand {
+  max-width: 280px;
+}
+.worker-main {
+  max-width: 1128px;
+  margin: 0 auto;
+  padding: 36px 24px;
+}
+.worker-main .page-heading {
+  margin-bottom: 24px;
+}
+.worker-main .period-tabs,
+.shift-updates-page .period-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.update-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr));
+  gap: 18px;
+}
+.update-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  text-align: left;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 3px 12px var(--shadow);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+button.update-card:hover {
+  border-color: var(--control-line);
+  box-shadow: 0 5px 20px var(--shadow-raised);
+}
+.update-card > strong,
+.update-card h2 {
+  font-size: 21px;
+  font-weight: 700;
+}
+.update-card .field-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.update-card .inline-actions {
+  margin-top: auto;
+  flex-wrap: wrap;
+}
+.update-card .text-link {
+  margin-top: auto;
+}
+.update-participant-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-width: 340px;
+  margin: 0 0 22px;
+  font-weight: 600;
+}
+.update-participant-filter select {
+  width: 100%;
+  border: 1px solid var(--control-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: var(--white);
+}
+.update-body {
+  display: grid;
+  gap: 24px;
+}
+.update-body h3,
+.update-internal h3 {
+  margin-bottom: 8px;
+  font-size: 17px;
+}
+.update-body p,
+.update-internal p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.update-body section {
+  min-width: 0;
+}
+.published-update {
+  display: grid;
+  gap: 18px;
+}
+.goal-result {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--blue-soft);
+}
+.goal-result > span {
+  color: var(--muted);
+  font-size: 14px;
+}
+.update-goals,
+.update-internal {
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  margin: 0;
+  min-width: 0;
+}
+.update-goals legend,
+.update-internal legend {
+  font-weight: 700;
+  padding: 0 5px;
+  font-size: 16px;
+  max-width: 100%;
+}
+.update-internal {
+  background: var(--pink-soft);
+}
+.update-internal h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.goal-entry {
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.form-body label.update-check {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+}
+.form-body .update-check input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
+  margin-top: 3px;
+}
+.update-history {
+  display: grid;
+  gap: 16px;
+}
+.update-history details {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+}
+.update-history summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.shift-published-update {
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+}
+.shift-published-update > h3 {
+  margin-bottom: 18px;
+}
+@media (max-width: 640px) {
+  .worker-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 20px;
+    gap: 16px;
+  }
+  .worker-header > div {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .worker-main {
+    padding: 24px 16px;
+  }
+  .worker-main .page-heading {
+    gap: 12px;
+  }
+  .worker-main h1 {
+    font-size: 28px;
+  }
+  .update-card {
+    padding: 20px;
+  }
+  .update-goals,
+  .update-internal {
+    padding: 15px;
+  }
+  .update-participant-filter select {
+    font-size: 16px;
+  }
+}
 :root {
   font-family: 'DM Sans Variable', sans-serif;
   color: var(--mtm-navy);

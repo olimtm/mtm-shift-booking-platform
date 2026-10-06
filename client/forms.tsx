@@ -23,6 +23,7 @@ import type {
 } from '../shared/types';
 import { dayKey, duration, fmt, hoursLabel, inputDate, time, zonedIso } from './dates';
 import { Avatar, ErrorNotice, Modal, Spinner, Status, supportLabels } from './ui';
+import { PublishedUpdate } from './ShiftUpdates';
 
 interface FormProps {
   data: DashboardData;
@@ -300,6 +301,8 @@ export function ShiftDetail({
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState('');
   const staff = data.user.role === 'staff';
+  const canChangeBooking = data.user.role !== 'worker';
+  const update = data.shiftUpdates?.find((u) => u.shiftId === shift.id);
   const active = shift.status === 'requested' || shift.status === 'confirmed';
   async function act(action: string, extras: Record<string, unknown> = {}) {
     setError('');
@@ -541,6 +544,12 @@ export function ShiftDetail({
             </div>
           </div>
         )}
+        {update && (
+          <section className="shift-published-update">
+            <h3>Post-shift update</h3>
+            <PublishedUpdate update={update} timezone={data.timezone} />
+          </section>
+        )}
         {error && <ErrorNotice>{error}</ErrorNotice>}
         <footer className="detail-footer">
           {staff && shift.status === 'requested' ? (
@@ -561,7 +570,7 @@ export function ShiftDetail({
               <button className="secondary-button" onClick={onClose} disabled={busy}>
                 Close
               </button>
-              {active && !shift.pendingChange && (
+              {canChangeBooking && active && !shift.pendingChange && (
                 <button className="primary-button" disabled={busy} onClick={onEdit}>
                   Request a change
                   <ArrowRight size={15} />
@@ -570,7 +579,7 @@ export function ShiftDetail({
             </>
           )}
         </footer>
-        {active && !shift.pendingChange && !cancelling && (
+        {canChangeBooking && active && !shift.pendingChange && !cancelling && (
           <button className="cancel-link" disabled={busy} onClick={() => setCancelling(true)}>
             {staff ? 'Cancel this shift' : 'Request a cancellation'}
           </button>

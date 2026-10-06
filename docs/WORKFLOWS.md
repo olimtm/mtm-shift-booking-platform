@@ -45,6 +45,8 @@ Local event creation and RSVP entry are available for demonstration and intentio
 
 All visible calendar/form times use `Australia/Sydney`. UTC timestamps and actual elapsed durations handle daylight-saving transitions; nonexistent spring-forward times are rejected. Changing the operating timezone requires an explicit application configuration change in this initial version.
 
-Staff can view all participants, including those with no regular support. Clients can view only their linked participants, related shifts, related events/RSVPs, and assigned worker names. Coordinator participant notes, the full worker roster, and integration statistics are not exposed to client accounts.
+Coordinators can view all participants, including those with no regular support. Clients can view only their linked participants, related shifts, related events/RSVPs, assigned worker names and shared post-shift updates. Coordinator participant notes, internal post-shift notes, the full worker roster, and integration statistics are not exposed to client accounts.
 
-Demo accounts and data are deliberately isolated. Real client access is granted with the administrator CLI after importing or creating participants. Public registration is not offered.
+Workers have a separate account role linked to one active support-worker record. They see only their assigned confirmed/cancelled shifts and cannot change bookings or manage people. Post-shift reports include activities, participant feedback and goal progress, and publish immediately to linked client accounts. Internal handover notes and coordinator follow-up remain private. See [Worker access and post-shift updates](POST-SHIFT-UPDATES.md) for setup and editing rules.
+
+Demo accounts and data are deliberately isolated. Real client and worker access is granted by a coordinator through **People & access** after importing or creating the relevant records. Public registration is not offered.

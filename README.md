@@ -21,7 +21,8 @@ Demo data is retained in `.local/demo.sqlite`. Real data defaults to a separate 
 - Client calendar and list views; shift details including support worker, times, location, description, and preferences; new requests, edits, and cancellation requests.
 - Staff calendar, participant filter, approval queue, support worker assignment, and overlapping staff assignment checks.
 - Participant settings: general support, events, both, or none. None is hidden from the default roster but remains available for manual requests.
-- Browser-based first coordinator setup and People & access administration: invite clients/coordinators, grant one or more participants, issue single-use password links, and disable access. Creating a participant does not create a login.
+- Browser-based first coordinator setup and People & access administration: invite clients/coordinators/workers, grant one or more participants to clients, link workers to their roster identity, issue single-use password links, and disable access. Creating a participant does not create a login.
+- Worker portal for assigned shifts and post-shift reports with activities, participant feedback and goal progress. Shared content publishes immediately to linked clients; internal handover/follow-up stays private. Corrections retain revision history. See [the worker guide](docs/POST-SHIFT-UPDATES.md).
 - Event RSVPs create one request per eligible event/participant pair, with 30 minutes before and after. Retries preserve approvals; event changes and confirmed-shift cancellations require review.
 - Staff-only read-only Airtable schema audit and initial participant/event/shift/RSVP import. Outbound requests use a durable retry queue and stable upsert identifier.
 - Sydney time display and input, including daylight-saving handling; timestamps stored as UTC.
@@ -56,13 +57,15 @@ npm test
 npm run build
 ```
 
-GitHub Actions runs these checks and both browser suites on pushes and pull requests, using fictional data and no Airtable credentials.
+GitHub Actions runs these checks and the account, import, booking, roster, appearance and post-shift browser suites on pushes and pull requests, using fictional data and no Airtable credentials.
 
 The API tests use isolated temporary SQLite databases and mocked Airtable responses. They exercise authentication and account scope, staff decisions, conflicts, RSVP padding/idempotency, reschedules/cancellations, persistent sessions and retry queues, and read-only import. They do not validate access to a live Airtable base.
 
 The browser smoke test in `scripts/browser-smoke.ts` uses the running demo and makes fictional test requests. Run it with `npm run test:browser` while `npm run demo` is running. It uses a system Chromium when available, or an installed Playwright Chromium. Use a separate demo database for automated checks if you want to preserve your demonstration records.
 
 After building, `npx tsx scripts/browser-accounts.ts` checks initial setup, invitations, scoped client access, resets and disabling accounts in desktop/mobile browsers. It starts its own server with a temporary database, excludes Airtable credentials, and removes its test database when finished. It requires Chromium and uses port 3012 by default (`ACCOUNT_BROWSER_PORT` can override it).
+
+`npm run test:shift-updates` checks worker invitations/login, assigned-only shifts, goal progress, shared preview, immediate family publication, private notes, corrections and coordinator follow-up. It starts an isolated in-memory server on port 3043 and checks desktop/mobile layouts. API tests also cover reassignment, inactive workers, concurrency/version conflicts, database persistence and client filtering of every revision.
 
 ## Deploy it yourself
 

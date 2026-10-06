@@ -21,7 +21,8 @@
     "test:import": "tsx scripts/browser-import.ts",
     "test:qol": "tsx scripts/browser-qol.ts",
     "test:appearance": "tsx scripts/browser-appearance.ts",
-    "test:workers": "tsx scripts/browser-workers.ts"
+    "test:workers": "tsx scripts/browser-workers.ts",
+    "test:shift-updates": "tsx scripts/browser-shift-updates.ts"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",

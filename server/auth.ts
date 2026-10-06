@@ -1,6 +1,16 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import type { StoredUser } from './db.js';
 import type { User } from '../shared/types.js';
+import type { Store } from './db.js';
+import { isActiveWorker } from '../shared/views.js';
+export function hasActiveWorkerAccess(
+  store: Store,
+  user: Pick<User, 'role' | 'workerId'>,
+): boolean {
+  if (user.role !== 'worker') return true;
+  const worker = user.workerId && store.get('staff', user.workerId);
+  return Boolean(worker && isActiveWorker(worker));
+}
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
   return `scrypt$${salt}$${scryptSync(password, salt, 64).toString('hex')}`;

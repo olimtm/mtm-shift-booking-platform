@@ -12,7 +12,15 @@ import type {
   User,
 } from '../shared/types.js';
 import { Store, type StoredUser } from './db.js';
-import { hashPassword, isConfiguredSecret, publicUser, tokenHash, verifyPassword } from './auth.js';
+import {
+  hashPassword,
+  isConfiguredSecret,
+  publicUser,
+  tokenHash,
+  verifyPassword,
+  hasActiveWorkerAccess,
+} from './auth.js';
+import { canReadShift, dashboardUpdates, installShiftUpdateRoutes } from './shift-updates.js';
 import { installAccountRoutes, setupRequired } from './accounts.js';
 import { seedDemo } from './seed.js';
 import { createWorkerSync } from './worker-sync.js';
@@ -154,6 +162,8 @@ export function createApp(options: AppOptions = {}) {
     });
     next();
   });
+  // Reports may contain eight goal examples and Unicode text within the field limits.
+  app.put('/api/shifts/:id/update', express.json({ limit: '256kb' }));
   app.use(express.json({ limit: '32kb' }));
   app.use(cookieParser());
   const webhookSecret = options.webhookSecret ?? process.env.RSVP_WEBHOOK_SECRET;
@@ -173,7 +183,7 @@ export function createApp(options: AppOptions = {}) {
         .get(tokenHash(token), Date.now()) as { user_id: string } | undefined;
       if (session) {
         const user = store.getUser(session.user_id);
-        if (user && !user.disabled) res.locals.user = user;
+        if (user && !user.disabled && hasActiveWorkerAccess(store, user)) res.locals.user = user;
       }
     }
     next();
@@ -189,6 +199,7 @@ export function createApp(options: AppOptions = {}) {
     next();
   };
   const scoped = (user: User, participantId: string) => {
+    if (user.role === 'worker') fail(403, 'Workers cannot create, approve or change bookings.');
     if (user.role !== 'staff' && !user.participantIds.includes(participantId))
       fail(403, 'You do not have access to this participant.');
     if (!store.get('participants', participantId)) fail(404, 'Participant not found.');
@@ -259,7 +270,12 @@ export function createApp(options: AppOptions = {}) {
         .json({ error: 'Too many sign-in attempts. Please try again in 15 minutes.' });
     }
     const user = store.findUser(email);
-    if (!verifyPassword(body.password, user?.passwordHash || dummyHash) || !user || user.disabled) {
+    if (
+      !verifyPassword(body.password, user?.passwordHash || dummyHash) ||
+      !user ||
+      user.disabled ||
+      !hasActiveWorkerAccess(store, user)
+    ) {
       failedAttempt(`ip:${address}`);
       failedAttempt(`email:${email}`);
       return res.status(401).json({ error: 'Email or password is incorrect.' });
@@ -300,14 +316,20 @@ export function createApp(options: AppOptions = {}) {
   app.get('/api/dashboard', auth, (_req, res) => {
     const user = publicUser(res.locals.user as StoredUser);
     const isStaff = user.role === 'staff';
-    const participants = store
-      .all('participants')
-      .filter((p) => isStaff || user.participantIds.includes(p.id))
-      .map((p) => (isStaff ? p : { ...p, notes: '' }));
     const shifts = store
       .all('shifts')
-      .filter((s) => isStaff || user.participantIds.includes(s.participantId))
+      .filter((s) => canReadShift(user, s))
       .sort((a, b) => a.start.localeCompare(b.start));
+    const participants = store
+      .all('participants')
+      .filter(
+        (p) =>
+          isStaff ||
+          (user.role === 'worker'
+            ? shifts.some((s) => s.participantId === p.id)
+            : user.participantIds.includes(p.id)),
+      )
+      .map((p) => (isStaff ? p : { ...p, notes: '' }));
     const rsvps = allRsvps(store).filter(
       (r) => isStaff || user.participantIds.includes(r.participantId),
     );
@@ -333,6 +355,7 @@ export function createApp(options: AppOptions = {}) {
       .all('staff')
       .filter((member) => isStaff || shifts.some((shift) => shift.staffId === member.id));
     const dashboard: DashboardData = {
+      shiftUpdates: dashboardUpdates(store, user, shifts),
       ...(isStaff
         ? {
             participantActivity: {
@@ -367,6 +390,7 @@ export function createApp(options: AppOptions = {}) {
     };
     res.json(dashboard);
   });
+  installShiftUpdateRoutes(app, store, auth);
   app.post('/api/shifts', auth, (req, res) => {
     const user = res.locals.user as StoredUser;
     const schema =

@@ -2,7 +2,13 @@ import type { Express, Request, RequestHandler, Response } from 'express';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { User } from '../shared/types.js';
-import { hashPassword, isConfiguredSecret, publicUser, tokenHash } from './auth.js';
+import {
+  hashPassword,
+  isConfiguredSecret,
+  publicUser,
+  tokenHash,
+  hasActiveWorkerAccess,
+} from './auth.js';
 import { Store, type StoredUser } from './db.js';
 import { fail, id } from './domain.js';
 
@@ -87,13 +93,23 @@ export function installAccountRoutes(options: {
   function validateParticipants(role: User['role'], participantIds: string[]) {
     if (new Set(participantIds).size !== participantIds.length)
       fail(400, 'Choose each participant only once.');
-    if (role === 'staff' && participantIds.length)
-      fail(400, 'Staff accounts already have coordinator access to all participants.');
+    if (role !== 'client' && participantIds.length)
+      fail(400, 'Only client accounts can have participant access links.');
     if (role === 'client' && !participantIds.length)
       fail(400, 'Link at least one participant to a client account.');
     for (const participantId of participantIds)
       if (!store.get('participants', participantId))
         fail(400, 'A selected participant does not exist.');
+  }
+  function validateWorker(role: User['role'], workerId?: string) {
+    if (role !== 'worker') {
+      if (workerId) fail(400, 'Only worker accounts can be linked to a support worker.');
+      return;
+    }
+    if (!workerId || !hasActiveWorkerAccess(store, { role, workerId }))
+      fail(400, 'Choose an active support worker for this account.');
+    if (store.db.prepare('SELECT id FROM users WHERE worker_id=?').get(workerId))
+      fail(409, 'This worker already has an account. Use its invitation or password reset link.');
   }
   function ensureStaffRecord(user: StoredUser) {
     if (user.role === 'staff' && !store.get('staff', user.id))
@@ -137,6 +153,8 @@ export function installAccountRoutes(options: {
         400,
         'This invitation or password reset link is invalid or has expired. Ask a coordinator for a new link.',
       );
+    if (!hasActiveWorkerAccess(store, user))
+      fail(403, 'This worker is inactive. Contact your coordinator about portal access.');
     return { link, user };
   }
 
@@ -201,8 +219,9 @@ export function installAccountRoutes(options: {
           .object({
             name: nameSchema,
             email: emailSchema,
-            role: z.enum(['staff', 'client']),
+            role: z.enum(['staff', 'client', 'worker']),
             participantIds: participantIdsSchema,
+            workerId: z.string().min(1).max(100).optional(),
           })
           .strict(),
         req.body,
@@ -210,6 +229,7 @@ export function installAccountRoutes(options: {
       validateParticipants(body.role, body.participantIds);
       const user: StoredUser = { ...body, id: id('u'), passwordHash: '', disabled: true };
       const link = store.transaction(() => {
+        validateWorker(body.role, body.workerId);
         if (store.findUser(body.email))
           fail(
             409,

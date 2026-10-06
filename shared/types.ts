@@ -1,4 +1,4 @@
-export type Role = 'staff' | 'client';
+export type Role = 'staff' | 'client' | 'worker';
 export type SupportType = 'general' | 'events' | 'both' | 'none';
 export type ShiftStatus = 'requested' | 'confirmed' | 'declined' | 'cancelled';
 export type DrivingPreference = 'required' | 'not_required' | 'no_preference';
@@ -10,6 +10,7 @@ export interface User {
   email: string;
   role: Role;
   participantIds: string[];
+  workerId?: string;
 }
 export interface Participant {
   active?: boolean;
@@ -86,6 +87,7 @@ export interface IntegrationStatus {
   message: string;
 }
 export interface DashboardData {
+  shiftUpdates?: ShiftUpdate[];
   workerSync?: { checkedAt: string | null; error: string | null; automatic: boolean };
   participantActivity?: { checkedAt: string | null; error: string | null };
   user: User;
@@ -97,4 +99,36 @@ export interface DashboardData {
   integration: IntegrationStatus;
   timezone: string;
   demoMode: boolean;
+}
+
+export interface GoalProgress {
+  goal: string;
+  progress: 'practised' | 'progress' | 'maintained' | 'needs_support';
+  evidence: string;
+}
+export interface SharedShiftUpdate {
+  activities: string;
+  howItWent: string;
+  feedbackProvided: boolean;
+  participantFeedback: string;
+  goals: GoalProgress[];
+  noGoalWork: boolean;
+  noGoalReason: string;
+  nextTime: string;
+}
+export interface InternalShiftUpdate {
+  notes: string;
+  followUpRequired: boolean;
+  followUpNotes: string;
+  incidentReference: string;
+}
+export interface ShiftUpdate extends SharedShiftUpdate {
+  canEdit?: boolean;
+  shiftId: string;
+  version: number;
+  authorName: string;
+  editedByName: string;
+  publishedAt: string;
+  updatedAt: string;
+  internal?: InternalShiftUpdate;
 }

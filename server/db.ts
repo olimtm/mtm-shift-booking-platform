@@ -38,6 +38,19 @@ export class Store {
     const columns = this.db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
     if (!columns.some((column) => column.name === 'disabled'))
       this.db.exec('ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0');
+    if (!columns.some((column) => column.name === 'worker_id'))
+      this.db.exec('ALTER TABLE users ADD COLUMN worker_id TEXT REFERENCES staff(id)');
+    this.db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS users_worker_identity ON users(worker_id) WHERE worker_id IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS shift_updates (
+        shift_id TEXT PRIMARY KEY REFERENCES shifts(id), version INTEGER NOT NULL,
+        author_id TEXT NOT NULL REFERENCES users(id), data TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS shift_update_versions (
+        shift_id TEXT NOT NULL REFERENCES shifts(id), version INTEGER NOT NULL,
+        data TEXT NOT NULL, PRIMARY KEY(shift_id,version)
+      );
+    `);
   }
   get<K extends keyof Entities>(table: K, id: string): Entities[K] | undefined {
     const row = this.db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id) as
@@ -96,13 +109,14 @@ export class Store {
       role: r.role as User['role'],
       passwordHash: r.password_hash,
       participantIds: JSON.parse(r.participant_ids),
+      ...(r.worker_id ? { workerId: r.worker_id } : {}),
       disabled: Boolean(r.disabled),
     };
   }
   putUser(user: StoredUser) {
     this.db
       .prepare(
-        'INSERT INTO users(id,email,name,role,password_hash,participant_ids,disabled) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET email=excluded.email,name=excluded.name,role=excluded.role,password_hash=excluded.password_hash,participant_ids=excluded.participant_ids,disabled=excluded.disabled',
+        'INSERT INTO users(id,email,name,role,password_hash,participant_ids,disabled,worker_id) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET email=excluded.email,name=excluded.name,role=excluded.role,password_hash=excluded.password_hash,participant_ids=excluded.participant_ids,disabled=excluded.disabled,worker_id=excluded.worker_id',
       )
       .run(
         user.id,
@@ -112,6 +126,7 @@ export class Store {
         user.passwordHash,
         JSON.stringify(user.participantIds),
         user.disabled ? 1 : 0,
+        user.workerId ?? null,
       );
   }
   meta(key: string): string | undefined {
