@@ -1124,8 +1124,25 @@ test('initial Airtable import creates upcoming support once, preserves staff dec
       200,
     );
 
-    const imported = await staff('POST', '/api/integrations/airtable/import', {});
+    records.RSVPs.push({
+      id: 'recZZZZZZZZZZZZZZ',
+      fields: { Event: [futureEventId], Status: 'Attending' },
+    });
+    const blocked = await staff('POST', '/api/integrations/airtable/import', {});
+    assert.equal(blocked.status, 422);
+    assert.equal(typeof blocked.body.error, 'string');
+    assert.match(String(blocked.body.error), /recZZZZZZZZZZZZZZ.*linked participant/);
+    assert.equal((await staff<DashboardData>('GET', '/api/dashboard')).body.participants.length, 0);
+    const imported = await staff<
+      Record<string, unknown> & { omittedRsvps: Array<{ recordId: string; url: string }> }
+    >('POST', '/api/integrations/airtable/import', {
+      omitInvalidRsvps: true,
+    });
     assert.equal(imported.status, 200, JSON.stringify(imported.body));
+    assert.equal(imported.body.omittedRsvps.length, 1);
+    assert.equal(imported.body.omittedRsvps[0].recordId, 'recZZZZZZZZZZZZZZ');
+    assert.match(imported.body.omittedRsvps[0].url, /recZZZZZZZZZZZZZZ$/);
+    records.RSVPs.pop();
     for (const [key, expected] of Object.entries({
       participants: 2,
       events: 2,
@@ -1185,7 +1202,9 @@ test('initial Airtable import creates upcoming support once, preserves staff dec
       fields: { Name: 'Invalid import entry', 'Support type': 'Unmapped value' },
     });
     const invalid = await staff('POST', '/api/integrations/airtable/import', {});
-    assert.equal(invalid.status, 502);
+    assert.equal(invalid.status, 422);
+    assert.match(String(invalid.body.error), /recGGGGGGGGGGGGGG.*unmapped support type/);
+    assert.ok(!String(invalid.body.error).includes('Invalid import entry'));
     const unchanged = (await staff<DashboardData>('GET', '/api/dashboard')).body;
     assert.deepEqual(unchanged.participants, preserved.participants);
     assert.deepEqual(unchanged.events, preserved.events);

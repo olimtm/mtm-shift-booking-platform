@@ -26,6 +26,7 @@ import {
   upsertRsvp,
 } from './domain.js';
 import {
+  AirtableImportError,
   AirtableRequestError,
   getAirtableStatus,
   inspectAirtableSchema,
@@ -821,13 +822,17 @@ export function createApp(options: AppOptions = {}) {
   app.post(
     '/api/integrations/airtable/import',
     staff,
-    asyncRoute(async (_req, res) => {
+    asyncRoute(async (req, res) => {
+      const options = z
+        .object({ omitInvalidRsvps: z.boolean().default(false) })
+        .parse(req.body ?? {});
       if (!configured())
         fail(409, 'Configure Airtable access and table mappings before importing.');
       let snapshot: Awaited<ReturnType<typeof readAirtableSnapshot>>;
       try {
-        snapshot = await readAirtableSnapshot();
+        snapshot = await readAirtableSnapshot(process.env, options);
       } catch (error) {
+        if (error instanceof AirtableImportError) fail(422, error.message);
         if (error instanceof AirtableRequestError)
           fail(502, `${error.message} No portal records were changed.`);
         fail(
@@ -1035,7 +1040,8 @@ export function createApp(options: AppOptions = {}) {
       });
       res.json({
         ...counts,
-        message: `Imported ${counts.participants} participants, ${counts.events} events, ${counts.shifts} existing shifts and ${counts.rsvps} RSVPs. ${counts.requests} upcoming support requests created; existing portal records were preserved.`,
+        omittedRsvps: snapshot.omittedRsvps,
+        message: `Imported ${counts.participants} participants, ${counts.events} events, ${counts.shifts} existing shifts and ${counts.rsvps} RSVPs. ${counts.requests} upcoming support requests created; existing portal records were preserved. ${snapshot.omittedRsvps.length} RSVP records had attendance omitted; see the report. Airtable records were not changed by this import.`,
       });
     }),
   );

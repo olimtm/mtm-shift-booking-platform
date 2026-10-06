@@ -164,3 +164,9 @@ For large events, batch deliveries to stay within your Airtable plan's automatio
 6. Check failed automation runs/outbox entries and retry only after resolving their cause. Confirm local database backups and persistent storage before real bookings.
 
 Outstanding policy questions for launch include the timezone, booking notice/cancellation windows, recurring support, travel/billing treatment of the buffer, the staff assignment source, participant notifications, and how to resolve conflicting updates from Airtable and the portal. These do not block the local interface, but must be agreed before enabling independent production writers.
+
+### Importing an existing base with incomplete RSVPs
+
+In Connected tools, select **Import valid records and report incomplete or conflicting RSVPs** before importing if legacy attendance is incomplete. This is opt-in: the default import still stops on invalid data. The option omits only invalid RSVP attendance, including every contradictory status for an event/participant pair; it never guesses attendance or skips existing shift requests. Other participants on a grouped RSVP can still import if their attendance is unambiguous. Existing shift requests may have blank notes, which remain blank. All participants, events and existing shifts must pass validation before the transaction writes anything.
+
+Review the result and download the import report directly from the portal. It lists omitted RSVP record IDs, reasons and Airtable links, without names or record contents. Omitted records remain unchanged in Airtable. Correct attendance there when needed and repeat the import; existing portal approvals, assignments and links are preserved. Keep outbound sync and the legacy request-creation automation disabled during cutover testing. Import existing shifts before testing webhooks to preserve duplicate prevention.

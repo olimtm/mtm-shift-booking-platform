@@ -655,7 +655,11 @@ export async function readAirtableRecords(
   return records;
 }
 
+/** Only controlled validation messages may be shown to staff; never upstream response bodies. */
+export class AirtableImportError extends Error {}
+
 export interface AirtableSnapshot {
+  omittedRsvps: Array<{ recordId: string; reason: string; url: string }>;
   participants: Array<{ airtableId: string; name: string; supportType: SupportType }>;
   events: Array<{
     airtableId: string;
@@ -700,6 +704,7 @@ export interface AirtableSnapshot {
 /** Fully validates a read-only initial import before its caller changes the local database. */
 export async function readAirtableSnapshot(
   env: Environment = process.env,
+  options: { omitInvalidRsvps?: boolean } = {},
 ): Promise<AirtableSnapshot> {
   const config = requireConfiguration(env);
   const metadata = await request<{ tables: MetadataTable[] }>(
@@ -748,9 +753,11 @@ export async function readAirtableSnapshot(
     ),
   ]);
   function invalid(table: string, index: number, requirement: string): never {
-    // Report the position and field purpose, not the record values or participant names.
-    throw new Error(
-      `Initial import stopped: ${table} row ${index + 1} ${requirement}. No local changes have been applied.`,
+    const records = { participants: people, events, rsvps, shifts };
+    const recordId = records[table as TableKey]?.[index]?.id;
+    const identity = isRecordId(recordId) ? `record ${recordId}` : `row ${index + 1}`;
+    throw new AirtableImportError(
+      `Initial import stopped: ${table} ${identity} ${requirement}. No portal records were changed.`,
     );
   }
   function value(
@@ -775,7 +782,24 @@ export async function readAirtableSnapshot(
       invalid(table, index, `needs a valid ${semantic} text value (maximum ${max} characters)`);
     return raw.trim();
   }
-  const snapshot: AirtableSnapshot = { participants: [], events: [], rsvps: [], shifts: [] };
+  const snapshot: AirtableSnapshot = {
+    participants: [],
+    events: [],
+    rsvps: [],
+    shifts: [],
+    omittedRsvps: [],
+  };
+  function omitRsvp(recordId: string, reason: string) {
+    if (snapshot.omittedRsvps.some((row) => row.recordId === recordId)) return;
+    const table = metadata.tables.find(
+      (table) => table.id === config.tables.rsvps || table.name === config.tables.rsvps,
+    )!;
+    snapshot.omittedRsvps.push({
+      recordId,
+      reason,
+      url: `https://airtable.com/${config.baseId}/${table.id}/${recordId}`,
+    });
+  }
   const cancelledEvents = new Set<string>();
   for (const [index, record] of people.entries()) {
     if (!isRecordId(record.id)) invalid('participants', index, 'has an invalid Airtable record ID');
@@ -844,47 +868,74 @@ export async function readAirtableSnapshot(
     return [...new Set(raw as string[])];
   }
   for (const [index, record] of rsvps.entries()) {
-    if (!isRecordId(record.id)) invalid('rsvps', index, 'has an invalid Airtable record ID');
-    const eventLinks = links(record, 'event', index);
-    const participantLinks = links(record, 'participant', index);
-    if (eventLinks.length !== 1 || !eventIds.has(eventLinks[0]))
-      invalid('rsvps', index, 'must link exactly one event present in the imported Events table');
-    if (participantLinks.some((id) => !participantIds.has(id)))
-      invalid('rsvps', index, 'links a participant missing from the imported participants table');
-    const cancelledAt = text('rsvps', record, 'cancelledAt', index, 100, false);
-    if (cancelledAt && !Number.isFinite(Date.parse(cancelledAt)))
-      invalid('rsvps', index, 'needs a valid cancellation timestamp');
-    const label = normalizeLabel(text('rsvps', record, 'status', index, 200, false));
-    const status =
-      cancelledAt || cancelledEvents.has(eventLinks[0])
-        ? 'cancelled'
-        : Object.hasOwn(config.rsvpValues, label)
-          ? config.rsvpValues[label]
-          : undefined;
-    if (!status)
-      invalid(
-        'rsvps',
-        index,
-        'has an unmapped attendance status; configure AIRTABLE_RSVP_STATUS_MAP',
+    try {
+      if (!isRecordId(record.id)) invalid('rsvps', index, 'has an invalid Airtable record ID');
+      const eventLinks = links(record, 'event', index);
+      const participantLinks = links(record, 'participant', index);
+      if (eventLinks.length !== 1 || !eventIds.has(eventLinks[0]))
+        invalid('rsvps', index, 'must link exactly one event present in the imported Events table');
+      if (participantLinks.some((id) => !participantIds.has(id)))
+        invalid('rsvps', index, 'links a participant missing from the imported participants table');
+      const cancelledAt = text('rsvps', record, 'cancelledAt', index, 100, false);
+      if (cancelledAt && !Number.isFinite(Date.parse(cancelledAt)))
+        invalid('rsvps', index, 'needs a valid cancellation timestamp');
+      const label = normalizeLabel(text('rsvps', record, 'status', index, 200, false));
+      const status =
+        cancelledAt || cancelledEvents.has(eventLinks[0])
+          ? 'cancelled'
+          : Object.hasOwn(config.rsvpValues, label)
+            ? config.rsvpValues[label]
+            : undefined;
+      if (!status)
+        invalid(
+          'rsvps',
+          index,
+          'has an unmapped attendance status; configure AIRTABLE_RSVP_STATUS_MAP',
+        );
+      for (const participantAirtableId of participantLinks)
+        snapshot.rsvps.push({
+          airtableId: record.id,
+          eventAirtableId: eventLinks[0],
+          participantAirtableId,
+          status,
+        });
+    } catch (error) {
+      if (
+        !options.omitInvalidRsvps ||
+        !(error instanceof AirtableImportError) ||
+        !isRecordId(record.id)
+      )
+        throw error;
+      omitRsvp(
+        record.id,
+        error.message
+          .replace(/^Initial import stopped: /, '')
+          .replace(/ No portal records were changed\.$/, ''),
       );
-    for (const participantAirtableId of participantLinks)
-      snapshot.rsvps.push({
-        airtableId: record.id,
-        eventAirtableId: eventLinks[0],
-        participantAirtableId,
-        status,
-      });
+    }
   }
   // Duplicate RSVP rows can represent one pair, but contradictory attendance is not safely inferable.
   const pairStates = new Map<string, string>();
+  const conflictingPairs = new Set<string>();
   for (const rsvp of snapshot.rsvps) {
     const pair = `${rsvp.eventAirtableId}:${rsvp.participantAirtableId}`;
-    if (pairStates.has(pair) && pairStates.get(pair) !== rsvp.status)
-      throw new Error(
-        'Initial import stopped: duplicate RSVPs contain conflicting attendance for the same event and participant. Resolve them before importing. No local changes have been applied.',
-      );
+    if (pairStates.has(pair) && pairStates.get(pair) !== rsvp.status) {
+      if (!options.omitInvalidRsvps)
+        throw new AirtableImportError(
+          'Initial import stopped: duplicate RSVPs contain conflicting attendance for the same event and participant. Resolve them before importing. No local changes have been applied.',
+        );
+      conflictingPairs.add(pair);
+    }
     pairStates.set(pair, rsvp.status);
   }
+  snapshot.rsvps = snapshot.rsvps.filter((rsvp) => {
+    if (!conflictingPairs.has(`${rsvp.eventAirtableId}:${rsvp.participantAirtableId}`)) return true;
+    omitRsvp(
+      rsvp.airtableId,
+      'Conflicting attendance for the same event and participant; this attendance pair was omitted without choosing a status.',
+    );
+    return false;
+  });
   const portalIds = new Set<string>();
   const shiftPairs = new Set<string>();
   function select<T extends string>(
@@ -990,7 +1041,7 @@ export async function readAirtableSnapshot(
         : undefined,
       start: new Date(startTime).toISOString(),
       end: new Date(endTime).toISOString(),
-      description: text('shifts', record, 'description', index, 3000),
+      description: text('shifts', record, 'description', index, 3000, false),
       location: text('shifts', record, 'location', index, LOCATION_MAX_LENGTH, false),
       notes: text('shifts', record, 'notes', index, 3000, false),
       kind,

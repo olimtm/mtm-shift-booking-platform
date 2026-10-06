@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  AirtableImportError,
   AirtableRequestError,
   getAirtableStatus,
   inspectAirtableSchema,
@@ -770,4 +771,84 @@ test('initial import preserves extended event and existing shift locations and r
   fixture.events.records[0].fields.Location = location;
   fixture.shifts.records[0].fields.Location = location + 'x';
   await assert.rejects(readAirtableSnapshot(env), /valid location text value/);
+});
+
+test('optional RSVP omissions report missing links, unknown attendance and all contradictory pairs while preserving blank-note shifts', async (t) => {
+  const fixture = importFixture();
+  fixture.rsvps.records.push(
+    {
+      id: 'rec55555555555555',
+      fields: { Participant: [], Event: ['rec33333333333333'], Status: 'CONFIRMED' },
+    },
+    {
+      id: 'rec66666666666666',
+      fields: { Participant: ['rec11111111111111'], Event: ['rec33333333333333'], Status: '' },
+    },
+    {
+      id: 'rec77777777777777',
+      fields: {
+        Participant: ['rec11111111111111'],
+        Event: ['rec33333333333333'],
+        Status: 'Cancelled',
+      },
+    },
+  );
+  fixture.shifts.records.push({
+    id: 'rec88888888888888',
+    fields: {
+      Participant: ['rec11111111111111'],
+      Event: ['rec33333333333333'],
+      Start: '2026-10-10T09:30:00+11:00',
+      End: '2026-10-10T12:30:00+11:00',
+      Status: 'Requested',
+    },
+  });
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    assert.equal(init.method, undefined, 'must not modify Airtable');
+    return Response.json(
+      url.includes('/meta/')
+        ? fixture.schema
+        : url.includes('/People?')
+          ? fixture.people
+          : url.includes('/Events?')
+            ? fixture.events
+            : url.includes('/Shift%20Requests?')
+              ? fixture.shifts
+              : fixture.rsvps,
+    );
+  });
+  await assert.rejects(
+    readAirtableSnapshot(env),
+    (error: Error) =>
+      error instanceof AirtableImportError &&
+      /rec55555555555555.*linked participant/.test(error.message),
+  );
+  const result = await readAirtableSnapshot(env, { omitInvalidRsvps: true });
+  assert.equal(result.participants.length, 2);
+  assert.equal(result.shifts.length, 1);
+  assert.equal(result.shifts[0].description, '');
+  assert.equal(result.shifts[0].airtableId, 'rec88888888888888');
+  assert.equal(result.shifts[0].status, 'requested');
+  assert.deepEqual(
+    result.rsvps.map((r) => r.participantAirtableId),
+    ['rec22222222222222'],
+    'unambiguous participant in grouped RSVP is preserved',
+  );
+  assert.deepEqual(result.omittedRsvps.map((r) => r.recordId).sort(), [
+    'rec44444444444444',
+    'rec55555555555555',
+    'rec66666666666666',
+    'rec77777777777777',
+  ]);
+  assert.match(
+    result.omittedRsvps[0].url,
+    /^https:\/\/airtable.com\/app12345678901234\/tblRSVPs\/rec55555555555555$/,
+  );
+  assert.ok(!JSON.stringify(result.omittedRsvps).includes('Person A'));
+  fixture.shifts.records[0].fields.Status = 'Unmapped';
+  await assert.rejects(
+    readAirtableSnapshot(env, { omitInvalidRsvps: true }),
+    /unsupported status/,
+    'invalid existing shifts must block even when RSVP omissions are allowed',
+  );
 });

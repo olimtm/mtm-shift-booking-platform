@@ -264,6 +264,11 @@ export default function App() {
   const [globalError, setGlobalError] = useState('');
   const [busy, setBusy] = useState(false);
   const [schema, setSchema] = useState<unknown>(null);
+  const [omitInvalidRsvps, setOmitInvalidRsvps] = useState(false);
+  const [importReport, setImportReport] = useState<{
+    message: string;
+    omittedRsvps: Array<{ recordId: string; reason: string; url: string }>;
+  } | null>(null);
   const refresh = useCallback(async () => {
     const next = await api<DashboardData>('/dashboard');
     setData(next);
@@ -1126,12 +1131,23 @@ export default function App() {
                   <button
                     className="secondary-button"
                     disabled={busy || !data.integration.configured || data.demoMode}
-                    onClick={() =>
-                      void globalAction(
-                        () => post('/integrations/airtable/import'),
-                        'Initial Airtable data imported; existing portal decisions preserved.',
-                      )
-                    }
+                    onClick={async () => {
+                      setBusy(true);
+                      setGlobalError('');
+                      setImportReport(null);
+                      try {
+                        const report = await post<NonNullable<typeof importReport>>(
+                          '/integrations/airtable/import',
+                          { omitInvalidRsvps },
+                        );
+                        setImportReport(report);
+                        await refresh();
+                      } catch (e) {
+                        setGlobalError((e as Error).message);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
                   >
                     <UsersRound size={16} />
                     Import initial data
@@ -1155,6 +1171,60 @@ export default function App() {
                     Check base fields
                   </button>
                 </div>
+                <label className="integration-message">
+                  <input
+                    type="checkbox"
+                    checked={omitInvalidRsvps}
+                    disabled={busy}
+                    onChange={(e) => setOmitInvalidRsvps(e.target.checked)}
+                  />{' '}
+                  Import valid records and report incomplete or conflicting RSVPs. Leave omitted
+                  attendance in Airtable for review.
+                </label>
+                <p className="integration-message">
+                  Existing shift requests are always validated and preserved, including requests
+                  with blank notes. No attendance status is guessed.
+                </p>
+                {importReport && (
+                  <div role="status">
+                    <p>{importReport.message}</p>
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        const url = URL.createObjectURL(
+                          new Blob([JSON.stringify(importReport, null, 2)], {
+                            type: 'application/json',
+                          }),
+                        );
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = 'airtable-import-report.json';
+                        link.click();
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      }}
+                    >
+                      Download import report
+                    </button>
+                    {importReport.omittedRsvps.length > 0 && (
+                      <details>
+                        <summary>
+                          Review {importReport.omittedRsvps.length} RSVP records with omitted
+                          attendance
+                        </summary>
+                        <ul>
+                          {importReport.omittedRsvps.map((row) => (
+                            <li key={row.recordId}>
+                              <a href={row.url} target="_blank" rel="noreferrer">
+                                {row.recordId}
+                              </a>
+                              : {row.reason}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                )}
               </section>
               <div className="integration-info-grid">
                 <section className="content-panel integration-guide">
