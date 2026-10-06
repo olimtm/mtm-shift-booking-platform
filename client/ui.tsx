@@ -46,7 +46,7 @@ export function Status({ shift }: { shift: Shift }) {
         : Ban;
   return (
     <span className={`status status-${shift.pendingChange ? 'requested' : shift.status}`}>
-      <Icon size={12} />
+      <Icon size={16} />
       {label}
     </span>
   );

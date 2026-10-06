@@ -600,9 +600,7 @@ export default function App() {
                   icon={Clock3}
                   label="Awaiting approval"
                   value={pending.length}
-                  detail={
-                    staff ? 'Awaiting approval' : 'Your coordinator will review these'
-                  }
+                  detail={staff ? 'Awaiting approval' : 'Your coordinator will review these'}
                   color="peach"
                   action={() => navigate('requests')}
                 />
@@ -627,14 +625,13 @@ export default function App() {
                       0,
                     ),
                   )}
-                  detail="Time for the things that matter"
+                  detail="Total scheduled hours"
                   color="blue"
                 />
               </div>
               <div className="schedule-section-heading">
                 <div>
                   <h2>{staff ? 'The week ahead' : 'Your week ahead'}</h2>
-                  <span>Every plan starts with a person.</span>
                 </div>
                 <div className="schedule-filters">
                   <div className="search-field">

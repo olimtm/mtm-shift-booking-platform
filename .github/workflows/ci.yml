@@ -22,6 +22,7 @@ jobs:
       - run: npm run test:accounts
       - run: npm run test:import
       - run: npm run test:qol
+      - run: npm run test:appearance
       - name: Booking and worker browser checks
         env:
           DEMO_MODE: 'true'

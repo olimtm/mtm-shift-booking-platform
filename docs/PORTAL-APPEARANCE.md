@@ -1,8 +1,13 @@
 # Portal appearance and views
 
-The portal uses the original MTM blue mark from the supplied Google Drive website assets, without recolouring it. The bright blue accent is `#6dc3de` from the supplied main logo; dark blue buttons and charcoal text keep controls readable. Green, amber and red remain reserved for meaningful status indicators. Promotional slogans have been removed from login, navigation, headings, forms and footers.
+The portal uses the exact MTM palette supplied in the gameshow setup: primary blue `#73cbe9`, primary pink `#f877b0`, navy/text `#0e2647`, white `#ffffff`, and black `#000000` (navy is preferred for portal text). All UI colours come from the tokens at the top of `client/styles.css`; the page surface and shadows are mixtures of those tokens. No green, amber, purple or grey status palette remains. Original Drive logo images are preserved without recolouring.
+
+Body text, labels, dates, badges and form controls stay at least 16px on desktop and mobile. Headings use larger, heavier type. Navy text has contrast ratios of 8.25:1 on blue, 5.95:1 on pink and 15.14:1 on white. White text is reserved for navy surfaces. Controls have navy borders and visible keyboard focus. Status wording and icons remain visible; pending calendar items also use dashed borders, so status never depends on colour alone. Weekly calendar columns scroll within their panel to retain readable text. Promotional slogans stay removed.
+
+`npm run test:appearance` checks rendered text size, weight, contrast, palette and responsive overflow across staff/client views, request dialogs and account access screens.
 
 Asset sources:
+
 - `public/brand/mtm-mark.png`: [Logo Transparent.png](https://drive.google.com/file/d/1cqtO7ytNcriBWDC4PU2Qqv9ebwWVbLeV/view)
 - `public/brand/mtm-logo.png`: [web main logo.png](https://drive.google.com/file/d/1aQgOE0tN6bAoZIWmIacb9XrN8cm2W7_d/view)
 

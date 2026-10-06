@@ -113,7 +113,7 @@ export default function Schedule({
         : Math.ceil(minutes(s.end, data.timezone) / 60),
     ),
   );
-  const hourHeight = 67;
+  const hourHeight = 100;
   const columns = useMemo(
     () =>
       days.map((day) => {
@@ -151,6 +151,10 @@ export default function Schedule({
       }),
     [shifts, week, data.timezone],
   );
+  // Keep overlapping bookings readable too, with horizontal scrolling confined
+  // to the calendar instead of squeezing each worker's shift into a thin lane.
+  const columnWidths = columns.map((items) => 180 * Math.max(1, ...items.map((s) => s.lanes)));
+  const calendarColumns = `90px ${columnWidths.map((width) => `minmax(${width}px, 1fr)`).join(' ')}`;
   return (
     <section className="calendar-panel">
       <div className="calendar-toolbar">
@@ -209,8 +213,11 @@ export default function Schedule({
         />
       ) : (
         <div className="calendar-scroll">
-          <div className="calendar-min-width">
-            <div className="calendar-day-header">
+          <div
+            className="calendar-min-width"
+            style={{ minWidth: 90 + columnWidths.reduce((a, b) => a + b, 0) }}
+          >
+            <div className="calendar-day-header" style={{ gridTemplateColumns: calendarColumns }}>
               <div className="timezone-label">
                 {data.timezone.split('/').pop()}
                 <br />
@@ -223,7 +230,13 @@ export default function Schedule({
                 </div>
               ))}
             </div>
-            <div className="calendar-body" style={{ height: (maxHour - minHour) * hourHeight }}>
+            <div
+              className="calendar-body"
+              style={{
+                height: (maxHour - minHour) * hourHeight,
+                gridTemplateColumns: calendarColumns,
+              }}
+            >
               <div className="time-axis">
                 {Array.from({ length: maxHour - minHour }, (_, i) => minHour + i).map((h) => (
                   <span key={h} style={{ top: (h - minHour) * hourHeight }}>
@@ -251,7 +264,7 @@ export default function Schedule({
                     return (
                       <button
                         key={shift.id}
-                        className={`calendar-shift shift-color-${shift.kind === 'event' ? 'lilac' : shift.status === 'requested' ? 'peach' : 'sage'} ${shift.status === 'requested' || shift.pendingChange ? 'shift-pending' : ''} ${lanes > 1 ? 'compact-shift' : ''}`}
+                        className={`calendar-shift shift-${shift.kind} ${shift.status === 'requested' || shift.pendingChange ? 'shift-pending' : ''} ${lanes > 1 ? 'compact-shift' : ''}`}
                         onClick={() => onSelect(shift)}
                         style={{
                           top: ((start - minHour * 60) / 60) * hourHeight + 4,
@@ -264,7 +277,7 @@ export default function Schedule({
                         <span className="shift-card-time">
                           {time(shift.start, data.timezone).replace(':00', '')} –{' '}
                           {time(shift.end, data.timezone).replace(':00', '')}
-                          {shift.status === 'requested' && <Clock3 size={11} />}
+                          {shift.status === 'requested' && <Clock3 size={16} />}
                         </span>
                         <strong>{p?.name}</strong>
                         <span className="shift-card-description">
@@ -295,15 +308,15 @@ export default function Schedule({
       <footer className="calendar-footer">
         <div className="legend">
           <span>
-            <i className="legend-green" />
+            <i className="legend-blue" />
             General support
           </span>
           <span>
-            <i className="legend-purple" />
+            <i className="legend-pink" />
             Event support
           </span>
           <span>
-            <i className="legend-peach" />
+            <i className="legend-pending" />
             Awaiting approval
           </span>
         </div>
