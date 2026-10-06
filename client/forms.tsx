@@ -1,3 +1,4 @@
+import { shiftTitle, isActiveParticipant } from '../shared/views';
 import { LOCATION_MAX_LENGTH } from '../shared/limits.js';
 import { useState, type FormEvent } from 'react';
 import {
@@ -41,7 +42,11 @@ export function ShiftForm({
 }: FormProps) {
   const today = initialDay || dayKey(new Date(), data.timezone);
   const [values, setValues] = useState({
-    participantId: existing?.participantId || initialParticipant || data.participants[0]?.id || '',
+    participantId:
+      existing?.participantId ||
+      initialParticipant ||
+      data.participants.find(isActiveParticipant)?.id ||
+      '',
     start: existing ? inputDate(existing.start, data.timezone) : `${today}T09:00`,
     end: existing ? inputDate(existing.end, data.timezone) : `${today}T12:00`,
     description: existing?.description || '',
@@ -50,6 +55,7 @@ export function ShiftForm({
     gender: existing?.gender || 'no_preference',
     notes: existing?.notes || '',
     kind: existing?.kind || 'general',
+    eventId: existing?.eventId || '',
   } satisfies Omit<ShiftInput, 'start' | 'end'> & { start: string; end: string });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -65,7 +71,12 @@ export function ShiftForm({
       const end = zonedIso(values.end, data.timezone);
       if (new Date(end) <= new Date(start))
         throw new Error('The end time must be after the start time.');
-      await onSave({ ...values, start, end });
+      await onSave({
+        ...values,
+        start,
+        end,
+        eventId: values.kind === 'event' ? values.eventId || null : null,
+      });
       onClose();
     } catch (e) {
       setError((e as Error).message);
@@ -75,11 +86,11 @@ export function ShiftForm({
   }
   return (
     <Modal
-      title={existing ? 'Request a shift change' : 'A little support, your way.'}
+      title={existing ? 'Request a shift change' : 'Request support'}
       subtitle={
         existing
           ? 'Your existing booking stays in place while the change is reviewed.'
-          : 'Tell us what you have in mind. We’ll take care of the next steps.'
+          : 'Requests require coordinator approval.'
       }
       onClose={busy ? () => {} : onClose}
       wide
@@ -93,12 +104,14 @@ export function ShiftForm({
             required
             disabled={!!existing}
           >
-            {data.participants.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.supportType === 'none' ? ' · No regular support' : ''}
-              </option>
-            ))}
+            {data.participants
+              .filter((p) => p.id === existing?.participantId || isActiveParticipant(p))
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.supportType === 'none' ? ' · No regular support' : ''}
+                </option>
+              ))}
           </select>
         </label>
         {data.participants.find((p) => p.id === values.participantId)?.supportType === 'none' && (
@@ -145,7 +158,11 @@ export function ShiftForm({
         <div className="form-row">
           <label>
             Support type
-            <select value={values.kind} onChange={(e) => change('kind', e.target.value)}>
+            <select
+              value={values.kind}
+              disabled={!!existing?.eventId}
+              onChange={(e) => change('kind', e.target.value)}
+            >
               <option value="general">General support</option>
               <option value="event">Event support</option>
             </select>
@@ -160,8 +177,55 @@ export function ShiftForm({
             />
           </label>
         </div>
+        {values.kind === 'event' && (
+          <label>
+            Event
+            <select
+              value={values.eventId}
+              disabled={!!existing}
+              required={!existing}
+              onChange={(e) => {
+                const event = data.events.find((event) => event.id === e.target.value);
+                setValues((current) => ({
+                  ...current,
+                  eventId: e.target.value,
+                  ...(event
+                    ? {
+                        description: `Support for ${event.title}`,
+                        start: inputDate(
+                          new Date(Date.parse(event.start) - 30 * 60_000).toISOString(),
+                          data.timezone,
+                        ),
+                        end: inputDate(
+                          new Date(Date.parse(event.end) + 30 * 60_000).toISOString(),
+                          data.timezone,
+                        ),
+                        location: event.location,
+                      }
+                    : {}),
+                }));
+              }}
+            >
+              <option value="">{existing ? 'Event not linked' : 'Select an event'}</option>
+              {data.events
+                .filter(
+                  (event) => event.id === existing?.eventId || Date.parse(event.end) > Date.now(),
+                )
+                .map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.title} ·{' '}
+                    {fmt(
+                      event.start,
+                      { day: 'numeric', month: 'short', year: 'numeric' },
+                      data.timezone,
+                    )}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         <div className="form-section-heading">
-          <span>Make it a good fit</span>
+          <span>Worker preferences</span>
           <span>Preferences, not guarantees</span>
         </div>
         <div className="form-row">
@@ -250,11 +314,7 @@ export function ShiftDetail({
     }
   }
   return (
-    <Modal
-      title="Shift details"
-      subtitle="A clear picture of the support ahead."
-      onClose={busy ? () => {} : onClose}
-    >
+    <Modal title="Shift details" subtitle="" onClose={busy ? () => {} : onClose}>
       <div className="detail-body">
         <div className="detail-person">
           <Avatar name={participant?.name || 'Participant'} color={participant?.color} />
@@ -264,7 +324,10 @@ export function ShiftDetail({
           </div>
           <Status shift={shift} />
         </div>
-        <h2 className="detail-description">{shift.description}</h2>
+        <h2 className="detail-description">{shiftTitle(shift, data.events)}</h2>
+        {shift.eventId &&
+          shift.description &&
+          shift.description !== shiftTitle(shift, data.events) && <p>{shift.description}</p>}
         <div className="detail-facts">
           <p>
             <CalendarDays size={18} />
@@ -532,11 +595,7 @@ export function ParticipantForm({
     }
   }
   return (
-    <Modal
-      title="Add a participant"
-      subtitle="Make room for another person’s possibilities."
-      onClose={busy ? () => {} : onClose}
-    >
+    <Modal title="Add a participant" subtitle="" onClose={busy ? () => {} : onClose}>
       <form className="form-body" onSubmit={submit}>
         <label>
           Full name
@@ -609,7 +668,11 @@ export function EventForm({
       const start = zonedIso(values.start, data.timezone);
       const end = zonedIso(values.end, data.timezone);
       if (new Date(end) <= new Date(start)) throw new Error('End time must be after start time.');
-      await onSave({ ...values, start, end });
+      await onSave({
+        ...values,
+        start,
+        end,
+      });
       onClose();
     } catch (e) {
       setError((e as Error).message);
@@ -620,7 +683,7 @@ export function EventForm({
   return (
     <Modal
       title="Plan an event"
-      subtitle="RSVPs can turn into the support people need."
+      subtitle="Eligible RSVPs include 30 minutes before and after the event."
       onClose={busy ? () => {} : onClose}
     >
       <form className="form-body" onSubmit={submit}>
@@ -698,7 +761,9 @@ export function EventDetail({
   onClose: () => void;
   onRsvp: (participantId: string, status: 'attending' | 'cancelled') => Promise<void>;
 }) {
-  const [participantId, setParticipantId] = useState(data.participants[0]?.id || '');
+  const [participantId, setParticipantId] = useState(
+    data.participants.find(isActiveParticipant)?.id || '',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const rsvps = data.rsvps.filter((r) => r.eventId === event.id && r.status === 'attending');
@@ -785,7 +850,7 @@ export function EventDetail({
                 onChange={(e) => setParticipantId(e.target.value)}
                 required
               >
-                {data.participants.map((p) => (
+                {data.participants.filter(isActiveParticipant).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} · {supportLabels[p.supportType]}
                   </option>

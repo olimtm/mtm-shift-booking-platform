@@ -31,6 +31,7 @@ import {
   getAirtableStatus,
   inspectAirtableSchema,
   readAirtableSnapshot,
+  readParticipantActivity,
   syncShiftToAirtable,
 } from './airtable.js';
 
@@ -48,6 +49,7 @@ const shiftInputSchema = z
     gender: z.enum(['female', 'male', 'no_preference']),
     notes: z.string().trim().max(3000).default(''),
     kind: z.enum(['general', 'event']),
+    eventId: z.string().min(1).max(100).nullable().optional(),
   })
   .strict();
 const eventSchema = z
@@ -308,7 +310,12 @@ export function createApp(options: AppOptions = {}) {
     );
     const events = store
       .all('events')
-      .filter((e) => isStaff || rsvps.some((r) => r.eventId === e.id))
+      .filter(
+        (e) =>
+          isStaff ||
+          rsvps.some((r) => r.eventId === e.id) ||
+          shifts.some((s) => s.eventId === e.id),
+      )
       .map((e) => {
         const { airtableId: _airtableId, ...event } = e;
         return {
@@ -323,6 +330,14 @@ export function createApp(options: AppOptions = {}) {
       .all('staff')
       .filter((member) => isStaff || shifts.some((shift) => shift.staffId === member.id));
     const dashboard: DashboardData = {
+      ...(isStaff
+        ? {
+            participantActivity: {
+              checkedAt: store.meta('participant_activity_checked') || null,
+              error: store.meta('participant_activity_error') || null,
+            },
+          }
+        : {}),
       user,
       participants,
       staff: members,
@@ -359,6 +374,27 @@ export function createApp(options: AppOptions = {}) {
     };
     validRange(body.start, body.end);
     scoped(user, body.participantId);
+    if (body.eventId) {
+      if (body.kind !== 'event') fail(400, 'An event link requires event support.');
+      const event = store.get('events', body.eventId);
+      if (
+        !event ||
+        (user.role !== 'staff' &&
+          !allRsvps(store).some(
+            (r) => r.eventId === body.eventId && r.participantId === body.participantId,
+          ))
+      )
+        fail(404, 'Event not found for this participant.');
+      if (
+        store
+          .all('shifts')
+          .some((s) => s.eventId === body.eventId && s.participantId === body.participantId)
+      )
+        fail(
+          409,
+          'This participant already has a support request for this event. Open the existing request.',
+        );
+    }
     const { staffId, status, ...input } = body;
     const shift = newShift(
       {
@@ -368,7 +404,7 @@ export function createApp(options: AppOptions = {}) {
       },
       user.role === 'staff' ? 'staff' : 'client',
       configured(),
-      { staffId: staffId ?? null, status: status ?? 'requested' },
+      { staffId: staffId ?? null, status: status ?? 'requested', eventId: body.eventId ?? null },
     );
     if (shift.staffId && !store.get('staff', shift.staffId))
       fail(400, 'Select an existing staff member.');
@@ -398,6 +434,11 @@ export function createApp(options: AppOptions = {}) {
       if (!['requested', 'confirmed'].includes(shift.status))
         fail(409, 'Only active shifts can be changed.');
       if (body.action === 'edit') {
+        if (
+          (body.values.eventId !== undefined && body.values.eventId !== shift.eventId) ||
+          (shift.eventId && body.values.kind !== 'event')
+        )
+          fail(400, 'An existing request cannot be moved to another event.');
         if (body.values.participantId !== shift.participantId)
           fail(403, 'A shift cannot be moved to another participant.');
         validRange(body.values.start, body.values.end);
@@ -843,7 +884,10 @@ export function createApp(options: AppOptions = {}) {
       const counts = { participants: 0, events: 0, shifts: 0, rsvps: 0, requests: 0, preserved: 0 };
       store.transaction(() => {
         for (const record of snapshot.participants) {
-          if (store.byAirtable('participants', record.airtableId)) {
+          const existing = store.byAirtable('participants', record.airtableId);
+          if (existing) {
+            if (record.active !== undefined)
+              store.put('participants', { ...existing, active: record.active });
             counts.preserved++;
             continue;
           }
@@ -860,6 +904,7 @@ export function createApp(options: AppOptions = {}) {
             supportType: record.supportType,
             notes: '',
             airtableId: record.airtableId,
+            ...(record.active !== undefined ? { active: record.active } : {}),
           };
           store.put('participants', participant);
           counts.participants++;
@@ -1053,6 +1098,54 @@ export function createApp(options: AppOptions = {}) {
       res.json(await drainOutbox());
     }),
   );
+  let activityRefresh: Promise<void> | null = null;
+  let activityAttempt = 0;
+  async function refreshParticipantActivity(force = false): Promise<void> {
+    if (demoMode || !configured()) return;
+    if (activityRefresh) return activityRefresh;
+    if (!force && Date.now() - activityAttempt < 5 * 60_000) return;
+    activityAttempt = Date.now();
+    activityRefresh = (async () => {
+      try {
+        const statuses = new Map(
+          (await readParticipantActivity()).map((row) => [row.airtableId, row.active]),
+        );
+        store.transaction(() => {
+          for (const participant of store.all('participants')) {
+            if (participant.airtableId)
+              store.put('participants', {
+                ...participant,
+                active: statuses.get(participant.airtableId) ?? false,
+              });
+          }
+          store.setMeta('participant_activity_checked', new Date().toISOString());
+          store.setMeta('participant_activity_error', '');
+        });
+      } catch (error) {
+        const message =
+          error instanceof AirtableRequestError || error instanceof AirtableImportError
+            ? error.message
+            : 'Could not refresh participant statuses. The previous list is preserved.';
+        store.setMeta('participant_activity_error', message);
+        throw new HttpError(502, message);
+      }
+    })();
+    try {
+      await activityRefresh;
+    } finally {
+      activityRefresh = null;
+    }
+  }
+  app.post(
+    '/api/integrations/airtable/participants',
+    staff,
+    asyncRoute(async (_req, res) => {
+      if (!configured() || demoMode)
+        fail(409, 'Configure Airtable before refreshing participant statuses.');
+      await refreshParticipantActivity(true);
+      res.json({ message: 'Participant statuses refreshed.' });
+    }),
+  );
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint not found.' }));
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (error instanceof HttpError) return res.status(error.status).json({ error: error.message });
@@ -1063,5 +1156,5 @@ export function createApp(options: AppOptions = {}) {
     console.error('Portal request failed:', error instanceof Error ? error.name : 'Unknown error');
     res.status(500).json({ error: 'We could not save this change. Please try again.' });
   });
-  return { app, store, drainOutbox, close: () => store.close() };
+  return { app, store, drainOutbox, refreshParticipantActivity, close: () => store.close() };
 }

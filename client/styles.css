@@ -4310,3 +4310,300 @@ label textarea::placeholder {
     max-height: 230px;
   }
 }
+
+/* MTM identity: original blue mark from the supplied Drive assets, with dark text
+   for readable controls. Green/amber/red status badges retain their meanings. */
+:root {
+  --mtm-blue: #6dc3de;
+  --forest: #155c75;
+  --forest-dark: #10475b;
+  --ink: #182f3a;
+  --muted: #607480;
+  --line: #dfe8ed;
+  --sage: #edf8fc;
+  color: var(--ink);
+  background: #f6f9fb;
+}
+body {
+  color: var(--ink);
+  background: #f6f9fb;
+}
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  color: var(--ink);
+}
+.brand img {
+  width: 48px;
+  height: 30px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.brand > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.brand strong {
+  font:
+    700 14px 'DM Sans Variable',
+    sans-serif;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+.brand small {
+  color: #607480;
+  font-size: 11px;
+  letter-spacing: 0.2px;
+  margin-top: 3px;
+}
+.sidebar {
+  background: #fff;
+  border-right-color: var(--line);
+}
+.sidebar-brand {
+  padding-left: 18px;
+  padding-right: 14px;
+}
+.workspace-pill,
+.workspace-monogram {
+  background: #edf8fc;
+  color: #155c75;
+}
+.nav-link.active {
+  background: #e4f5fb;
+  color: #124c62;
+}
+.nav-link:hover {
+  background: #f0f8fc;
+}
+.nav-link.active .nav-count {
+  background: #c3e9f5;
+  color: #124c62;
+}
+.primary-button {
+  background: var(--forest);
+  border-color: var(--forest);
+  color: white;
+}
+.primary-button:hover {
+  background: var(--forest-dark);
+}
+.secondary-button:hover,
+.small-button:hover {
+  background: #edf8fc;
+}
+.tab-buttons button.active,
+.segmented button.selected {
+  color: #124c62;
+  background: #e4f5fb;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus,
+select:focus,
+textarea:focus {
+  outline-color: #318ca9;
+}
+.login-page {
+  display: flex;
+  min-height: 100dvh;
+  background: #f0f8fc;
+  justify-content: center;
+}
+.login-main {
+  width: min(100%, 580px);
+  min-height: 100dvh;
+  padding: 36px;
+  background: #fff;
+}
+.login-form-container {
+  width: 100%;
+  max-width: 380px;
+  margin: auto;
+  padding: 28px 0;
+}
+.login-form-container > .brand {
+  margin-bottom: 36px;
+}
+.login-form-container > h2 {
+  font-size: 28px;
+}
+.login-top {
+  margin-bottom: 20px;
+}
+.page-heading {
+  margin-bottom: 24px;
+}
+.page-heading h1 {
+  margin-top: 0;
+}
+.app-footer {
+  justify-content: flex-end;
+}
+.event-rule-banner {
+  background: #edf8fc;
+  border-color: #c3e9f5;
+}
+.event-art {
+  background: #e4f5fb;
+  color: #155c75;
+}
+.event-theme-1 .event-art,
+.event-theme-2 .event-art {
+  background: #e4f5fb;
+  color: #155c75;
+}
+.event-art-circle,
+.event-art-star {
+  display: none;
+}
+.event-card h3 {
+  overflow-wrap: anywhere;
+}
+.access-page {
+  background: #f0f8fc;
+}
+.access-page > .brand {
+  margin: 0 auto 28px;
+}
+.participant-toolbar {
+  flex-wrap: wrap;
+}
+.tab-buttons {
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .login-main {
+    padding: 24px;
+  }
+  .login-form-container {
+    padding-top: 24px;
+  }
+  .brand strong {
+    font-size: 14px;
+  }
+  .panel-toolbar {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+}
+/* Neutral text and blue accents replace the original sage UI palette. */
+h1,
+h2,
+h3,
+h4,
+.page-heading h1,
+.login-form-container h2,
+.shift-title-line strong,
+.participant-card h3,
+.event-card h3,
+.stat-card strong,
+.detail-description {
+  color: #182f3a;
+}
+.nav-link,
+.nav-section-label,
+.breadcrumb,
+.breadcrumb > span,
+.shift-list-main > span,
+.shift-list-worker,
+.field-hint,
+.hidden-toggle,
+.panel-note,
+.calendar-footer,
+.schedule-bottom,
+.app-footer,
+.login-top,
+.secure-label,
+.login-form-container > p,
+.login-form-container > .login-help,
+.modal-header p,
+.event-card-body > p,
+.event-day-label,
+.event-rule-banner p,
+.integration-message,
+.integration-card-heading p,
+.mapping-row span,
+.detail-facts p,
+.detail-facts small,
+.preference-grid span,
+.section-heading > span,
+.search-field input::placeholder,
+.switch-demo,
+.demo-login small,
+.demo-login > div:first-child {
+  color: #586d78;
+}
+.form-body label,
+.detail-body > label,
+.login-form-container form label,
+.participant-card label select,
+label input:not([type='checkbox']),
+label select,
+label textarea {
+  color: #263f4d;
+}
+label input::placeholder,
+label textarea::placeholder {
+  color: #637985;
+}
+label input:not([type='checkbox']),
+label select,
+label textarea,
+.search-field {
+  border-color: #cedee6;
+}
+.nav-link.active::before {
+  background: #6dc3de;
+}
+.date-square {
+  background: #edf8fc;
+  border-color: #d8edf5;
+  color: #155c75;
+}
+.date-square strong,
+.date-square span {
+  color: #155c75;
+}
+.panel-note,
+.demo-role-buttons button {
+  background: #f6fafc;
+  border-color: #dfe8ed;
+  color: #425e6d;
+}
+.tab-buttons button {
+  color: #586d78;
+  border-radius: 6px;
+  padding: 9px 12px;
+}
+.tab-buttons button.active {
+  color: #124c62;
+}
+.info-notice {
+  background: #edf8fc;
+  color: #215a70;
+}
+.sidebar-brand {
+  padding-inline: 0;
+  gap: 6px;
+}
+.sidebar .brand strong {
+  font-size: 13px;
+  white-space: normal;
+}
+.sidebar .brand small {
+  font-size: 10px;
+}
+@media (max-width: 760px) {
+  .sidebar {
+    width: 280px;
+  }
+  .sidebar:not(.mobile-open) {
+    visibility: hidden;
+  }
+  .sidebar.mobile-open {
+    visibility: visible;
+  }
+}

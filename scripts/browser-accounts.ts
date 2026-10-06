@@ -136,7 +136,7 @@ async function accept(page: Page, url: string, password: string, reset = false) 
   await page.goto(url);
   await expect(
     page.getByRole('heading', {
-      name: reset ? 'A fresh start.' : 'Welcome to your support space.',
+      name: reset ? 'Reset your password' : 'Create your account',
     }),
   ).toBeVisible();
   await expect(page.getByLabel('New password')).toBeVisible();
@@ -146,9 +146,7 @@ async function accept(page: Page, url: string, password: string, reset = false) 
   await page
     .getByRole('button', { name: reset ? 'Save password and sign in' : 'Activate my account' })
     .click();
-  await expect(
-    page.getByRole('heading', { name: /^(Support schedule|Your support,)/ }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^(Support schedule|My support)/ })).toBeVisible();
   assert.equal(
     new URL(page.url()).hash,
     '',
@@ -160,7 +158,7 @@ try {
   const coordinator = await page();
   await coordinator.goto(origin);
   await expect(
-    coordinator.getByRole('heading', { name: 'Make this your workspace.' }),
+    coordinator.getByRole('heading', { name: 'Set up coordinator account' }),
   ).toBeVisible();
   await screenshot(coordinator, 'first-setup-desktop');
   await screenshot(coordinator, 'first-setup-mobile', true);
@@ -180,7 +178,7 @@ try {
   assert.equal((await data(coordinator)).user.role, 'staff');
   assert.equal((await data(coordinator)).integration.configured, false);
   await coordinator.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await expect(coordinator.getByRole('heading', { name: 'Good to see you.' })).toBeVisible();
+  await expect(coordinator.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await login(coordinator, 'coordinator@browser.invalid', passwords.first);
   await accounts(coordinator);
   await expect(
@@ -240,9 +238,9 @@ try {
     'Changing grants revokes existing client sessions',
   );
   await client.reload();
-  await expect(client.getByRole('heading', { name: 'Good to see you.' })).toBeVisible();
+  await expect(client.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await login(client, 'client@browser.invalid', passwords.client);
-  await expect(client.getByRole('heading', { name: 'Your support, Fictional.' })).toBeVisible();
+  await expect(client.getByRole('heading', { name: 'My support' })).toBeVisible();
   assert.deepEqual((await data(client)).participants.map((p) => p.id).sort(), [
     'p-second',
     'p-third',
@@ -263,12 +261,12 @@ try {
     'Reset revokes previously active sessions',
   );
   await client.reload();
-  await expect(client.getByRole('heading', { name: 'Good to see you.' })).toBeVisible();
+  await expect(client.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await login(client, 'client@browser.invalid', passwords.client);
   await expect(client.getByRole('alert')).toBeVisible();
-  await expect(client.getByRole('heading', { name: 'Good to see you.' })).toBeVisible();
+  await expect(client.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await login(client, 'client@browser.invalid', passwords.reset);
-  await expect(client.getByRole('heading', { name: 'Your support, Fictional.' })).toBeVisible();
+  await expect(client.getByRole('heading', { name: 'My support' })).toBeVisible();
 
   stage = 'disabled account enforcement';
   await row(coordinator, 'Fictional Representative')
@@ -278,10 +276,10 @@ try {
   assert.equal((await client.request.get(`${origin}/api/dashboard`)).status(), 401);
   assert.equal((await resetClient.request.get(`${origin}/api/dashboard`)).status(), 401);
   await client.reload();
-  await expect(client.getByRole('heading', { name: 'Good to see you.' })).toBeVisible();
+  await expect(client.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await login(client, 'client@browser.invalid', passwords.reset);
   await expect(client.getByRole('alert')).toBeVisible();
-  await expect(client.getByRole('heading', { name: 'Good to see you.' })).toBeVisible();
+  await expect(client.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await row(coordinator, 'Fictional Second')
     .getByRole('button', { name: 'Disable access', exact: true })
     .click();

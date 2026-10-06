@@ -12,6 +12,7 @@ export interface User {
   participantIds: string[];
 }
 export interface Participant {
+  active?: boolean;
   id: string;
   name: string;
   initials: string;
@@ -28,6 +29,7 @@ export interface StaffMember {
   airtableId?: string;
 }
 export interface ShiftInput {
+  eventId?: string | null;
   participantId: string;
   start: string;
   end: string;
@@ -82,6 +84,7 @@ export interface IntegrationStatus {
   message: string;
 }
 export interface DashboardData {
+  participantActivity?: { checkedAt: string | null; error: string | null };
   user: User;
   participants: Participant[];
   staff: StaffMember[];

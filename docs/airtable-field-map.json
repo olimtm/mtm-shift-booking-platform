@@ -1,5 +1,5 @@
 {
-  "participants": { "name": "Full Name", "supportType": "1:1 Support" },
+  "participants": { "name": "Full Name", "supportType": "1:1 Support", "status": "Status" },
   "shifts": {
     "portalId": "Portal request ID",
     "participant": "Participant",

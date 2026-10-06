@@ -852,3 +852,28 @@ test('optional RSVP omissions report missing links, unknown attendance and all c
     'invalid existing shifts must block even when RSVP omissions are allowed',
   );
 });
+
+test('initial import reads Active independently from support settings', async (t) => {
+  const fixture = importFixture();
+  fixture.schema.tables[0].fields.push({ id: 'fldActivity', name: 'Status', type: 'singleSelect' });
+  Object.assign(fixture.people.records[0].fields, { Status: 'Inactive' });
+  Object.assign(fixture.people.records[1].fields, { Status: 'Active' });
+  t.mock.method(globalThis, 'fetch', async (url: string) =>
+    Response.json(
+      url.includes('/meta/')
+        ? fixture.schema
+        : url.includes('/People?')
+          ? fixture.people
+          : url.includes('/Events?')
+            ? fixture.events
+            : url.includes('/Shift%20Requests?')
+              ? fixture.shifts
+              : fixture.rsvps,
+    ),
+  );
+  const snapshot = await readAirtableSnapshot(env);
+  assert.equal(snapshot.participants[0].active, false);
+  assert.equal(snapshot.participants[0].supportType, 'events');
+  assert.equal(snapshot.participants[1].active, true);
+  assert.equal(snapshot.participants[1].supportType, 'none');
+});

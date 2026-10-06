@@ -1,3 +1,4 @@
+import Brand from './Brand';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowRight,
@@ -40,12 +41,7 @@ function AccessShell({
 }) {
   return (
     <main className="access-page">
-      <div className="access-brand">
-        <ShieldCheck size={24} />
-        <span>
-          mates that matter<span>SUPPORT BOOKINGS</span>
-        </span>
-      </div>
+      <Brand />
       <section className="access-card">
         <span className="access-symbol">
           <LockKeyhole size={25} />
@@ -54,7 +50,6 @@ function AccessShell({
         <p className="access-subtitle">{subtitle}</p>
         {children}
       </section>
-      <p className="access-footer">A space built around you.</p>
     </main>
   );
 }
@@ -89,7 +84,7 @@ export function FirstSetup({ onComplete }: { onComplete: () => Promise<void> }) 
   }
   return (
     <AccessShell
-      title="Make this your workspace."
+      title="Set up coordinator account"
       subtitle="Create the first coordinator account. You only need to do this once."
     >
       <form onSubmit={submit} className="access-form">
@@ -229,7 +224,7 @@ export function AcceptInvitation({
   }
   return (
     <AccessShell
-      title={details?.kind === 'reset' ? 'A fresh start.' : 'Welcome to your support space.'}
+      title={details?.kind === 'reset' ? 'Reset your password' : 'Create your account'}
       subtitle={
         details
           ? `${details.name}, ${details.kind === 'reset' ? 'choose a new password for your account.' : 'choose a password to activate your account.'}`
@@ -421,9 +416,7 @@ export default function Accounts({ data }: { data: DashboardData }) {
             </article>
           ))
         ) : (
-          <Empty title="Bring your people into the portal">
-            Invite a client or coordinator to get started.
-          </Empty>
+          <Empty title="No accounts yet">Invite a client or coordinator to get started.</Empty>
         )}
       </section>
       <div className="info-strip">

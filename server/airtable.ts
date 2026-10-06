@@ -24,7 +24,7 @@ const DEFAULT_SHIFT_LABELS: ShiftLabels = {
 };
 
 const DEFAULT_FIELDS: FieldMap = {
-  participants: { name: 'Name', supportType: 'Support type' },
+  participants: { name: 'Name', supportType: 'Support type', status: 'Status' },
   shifts: {
     portalId: 'Portal request ID',
     participant: 'Participant',
@@ -63,7 +63,7 @@ const REQUIRED_FIELDS: Record<TableKey, string[]> = {
 const TEXT_TYPES = ['singleLineText', 'multilineText', 'richText'];
 const SELECT_TYPES = ['singleSelect', 'singleLineText'];
 const EXPECTED_TYPES: Record<TableKey, Record<string, string[]>> = {
-  participants: { name: TEXT_TYPES, supportType: SELECT_TYPES },
+  participants: { name: TEXT_TYPES, supportType: SELECT_TYPES, status: SELECT_TYPES },
   shifts: {
     portalId: ['singleLineText'],
     participant: ['multipleRecordLinks'],
@@ -660,7 +660,12 @@ export class AirtableImportError extends Error {}
 
 export interface AirtableSnapshot {
   omittedRsvps: Array<{ recordId: string; reason: string; url: string }>;
-  participants: Array<{ airtableId: string; name: string; supportType: SupportType }>;
+  participants: Array<{
+    airtableId: string;
+    name: string;
+    supportType: SupportType;
+    active?: boolean;
+  }>;
   events: Array<{
     airtableId: string;
     title: string;
@@ -814,7 +819,18 @@ export async function readAirtableSnapshot(
         index,
         'has an unmapped support type; configure AIRTABLE_SUPPORT_TYPE_MAP',
       );
-    snapshot.participants.push({ airtableId: record.id, name, supportType });
+    snapshot.participants.push({
+      airtableId: record.id,
+      name,
+      supportType,
+      ...(resolvedFields.participants?.status
+        ? {
+            active:
+              normalizeLabel(text('participants', record, 'status', index, 200, false)) ===
+              'active',
+          }
+        : {}),
+    });
   }
   for (const [index, record] of events.entries()) {
     if (!isRecordId(record.id)) invalid('events', index, 'has an invalid Airtable record ID');
@@ -1141,4 +1157,36 @@ export async function readAirtableSnapshot(
     }
   }
   return snapshot;
+}
+
+/** Read only the lifecycle status, without overwriting portal support settings or approvals. */
+export async function readParticipantActivity(
+  env: Environment = process.env,
+): Promise<Array<{ airtableId: string; active: boolean }>> {
+  const config = requireConfiguration(env);
+  const schema = await request<{ tables: MetadataTable[] }>(
+    config,
+    `meta/bases/${encodeURIComponent(config.baseId)}/tables`,
+  );
+  const table = schema.tables.find(
+    (t) => t.id === config.tables.participants || t.name === config.tables.participants,
+  );
+  const mapped = config.fields.participants.status;
+  const field = table?.fields.find((f) => f.id === mapped || f.name === mapped);
+  if (!field || !SELECT_TYPES.includes(field.type))
+    throw new AirtableImportError(
+      'Map Participants > Status to a text or single-select field before refreshing active participants.',
+    );
+  const records = await readAirtableRecords('participants', env, [field.name]);
+  return records.map((record) => {
+    const value = record.fields[field.name];
+    if (!isRecordId(record.id) || (value != null && typeof value !== 'string'))
+      throw new AirtableImportError(
+        'A participant status could not be read. The previous active list has been preserved.',
+      );
+    return {
+      airtableId: record.id,
+      active: typeof value === 'string' && normalizeLabel(value) === 'active',
+    };
+  });
 }

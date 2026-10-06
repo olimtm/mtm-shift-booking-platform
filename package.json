@@ -18,7 +18,8 @@
     "backup": "tsx scripts/backup.ts",
     "check:airtable": "tsx scripts/check-airtable.ts",
     "test:accounts": "tsx scripts/browser-accounts.ts",
-    "test:import": "tsx scripts/browser-import.ts"
+    "test:import": "tsx scripts/browser-import.ts",
+    "test:qol": "tsx scripts/browser-qol.ts"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",

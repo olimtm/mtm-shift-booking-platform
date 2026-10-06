@@ -1,3 +1,4 @@
+import { shiftTitle } from '../shared/views';
 import { useMemo } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, List, MapPin, Plus, Clock3 } from 'lucide-react';
 import type { DashboardData, Shift } from '../shared/types';
@@ -46,7 +47,7 @@ export function ShiftList({
             )}
             <div className="shift-list-main">
               <div className="shift-title-line">
-                <strong>{shift.description}</strong>
+                <strong>{shiftTitle(shift, data.events)}</strong>
                 {shift.kind === 'event' && <span className="event-label">Event</span>}
               </div>
               <span>
@@ -258,7 +259,7 @@ export default function Schedule({
                           left: `calc(${(lane / lanes) * 100}% + 5px)`,
                           width: `calc(${100 / lanes}% - 10px)`,
                         }}
-                        aria-label={`${p?.name}, ${shift.description}, ${time(shift.start, data.timezone)} to ${time(shift.end, data.timezone)}, ${shift.status}`}
+                        aria-label={`${p?.name}, ${shiftTitle(shift, data.events)}, ${time(shift.start, data.timezone)} to ${time(shift.end, data.timezone)}, ${shift.status}`}
                       >
                         <span className="shift-card-time">
                           {time(shift.start, data.timezone).replace(':00', '')} –{' '}
@@ -267,9 +268,7 @@ export default function Schedule({
                         </span>
                         <strong>{p?.name}</strong>
                         <span className="shift-card-description">
-                          {shift.kind === 'event'
-                            ? shift.description.replace(/^Support for /, '')
-                            : shift.description}
+                          {shiftTitle(shift, data.events)}
                         </span>
                         {end - start >= 110 && (
                           <span className="shift-card-worker">

@@ -52,7 +52,7 @@ export default function Workers({
         </button>
       </div>
       {data.staff.length === 0 && (
-        <Empty title="Build your worker roster">
+        <Empty title="No support workers yet">
           Add your first support worker to start assigning shifts.
         </Empty>
       )}

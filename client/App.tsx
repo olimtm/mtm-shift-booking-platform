@@ -49,6 +49,8 @@ import { Avatar, Empty, ErrorNotice, Spinner, Status, supportLabels } from './ui
 import Schedule, { ShiftList } from './Schedule';
 import { EventDetail, EventForm, ParticipantForm, ShiftDetail, ShiftForm } from './forms';
 import Workers from './Workers';
+import Brand from './Brand';
+import { isActiveParticipant, isPastSupport, shiftTitle } from '../shared/views';
 import Accounts, { FirstSetup, AcceptInvitation } from './Accounts';
 
 type Page =
@@ -62,22 +64,6 @@ const pageNames: Record<Page, string> = {
   accounts: 'People & access',
   workers: 'Support workers',
 };
-
-function Brand({ light = false }: { light?: boolean }) {
-  return (
-    <div className={`brand ${light ? 'brand-light' : ''}`}>
-      <span className="brand-symbol">
-        <HeartHandshake size={24} strokeWidth={1.65} />
-      </span>
-      <span>
-        <strong>
-          mtm<span className="brand-period">.</span>
-        </strong>
-        <small>mates that matter</small>
-      </span>
-    </div>
-  );
-}
 
 function Login({
   demoMode,
@@ -107,48 +93,6 @@ function Login({
   }
   return (
     <div className="login-page">
-      <aside className="login-story">
-        <Brand light />
-        <div className="login-story-content">
-          <span className="eyebrow light-eyebrow">MORE CONNECTION. MORE POSSIBILITY.</span>
-          <h1>
-            Your people.
-            <br />
-            Your plans.
-            <br />
-            <em>Your kind of support.</em>
-          </h1>
-          <p>
-            A little help to get out there, do your thing,
-            <br className="desktop-only" /> and make more of every day.
-          </p>
-          <div className="login-art" aria-hidden="true">
-            <span className="art-orbit orbit-one" />
-            <span className="art-orbit orbit-two" />
-            <div className="art-card art-card-back">
-              <CalendarHeart size={25} />
-              <span>Space for what matters.</span>
-            </div>
-            <div className="art-card art-card-front">
-              <span className="art-check">
-                <Check size={20} />
-              </span>
-              <div>
-                <strong>Your next adventure</strong>
-                <span>With the right support beside you.</span>
-              </div>
-              <span className="art-spark">
-                <Sparkles size={23} />
-              </span>
-            </div>
-            <span className="art-flower">✳</span>
-          </div>
-        </div>
-        <div className="login-story-footer">
-          <HeartHandshake size={17} />
-          Thoughtful support. Real connections.
-        </div>
-      </aside>
       <main className="login-main">
         <div className="login-top">
           <span>SUPPORT BOOKINGS</span>
@@ -158,11 +102,9 @@ function Login({
           </span>
         </div>
         <div className="login-form-container">
-          <span className="login-welcome-icon">
-            <CalendarHeart size={26} />
-          </span>
-          <h2>Good to see you.</h2>
-          <p>Sign in to see what’s coming up and plan your next support.</p>
+          <Brand />
+          <h2>Sign in</h2>
+          <p>Manage your support bookings.</p>
           <form onSubmit={submit}>
             <label>
               Email address
@@ -228,7 +170,6 @@ function Login({
             </div>
           )}
         </div>
-        <footer className="login-footer">A little planning. A world of possibility.</footer>
       </main>
     </div>
   );
@@ -250,7 +191,9 @@ export default function App() {
   const [showHidden, setShowHidden] = useState(false);
   const [week, setWeek] = useState(monday(dayKey(new Date())));
   const [view, setView] = useState<'week' | 'list'>('week');
-  const [requestFilter, setRequestFilter] = useState<'pending' | 'all'>('pending');
+  const [requestFilter, setRequestFilter] = useState<'pending' | 'all'>('all');
+  const [requestPeriod, setRequestPeriod] = useState<'upcoming' | 'past'>('upcoming');
+  const [eventPeriod, setEventPeriod] = useState<'upcoming' | 'past'>('upcoming');
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [shiftForm, setShiftForm] = useState<{
@@ -386,14 +329,17 @@ export default function App() {
     setGlobalError('');
   }
   const staff = data?.user.role === 'staff';
-  const pending = data?.shifts.filter((s) => s.status === 'requested' || s.pendingChange) || [];
+  const pending =
+    data?.shifts.filter(
+      (s) => !isPastSupport(s) && (s.status === 'requested' || s.pendingChange),
+    ) || [];
   const matchingShifts = useMemo(
     () =>
       data?.shifts
         .filter(
           (s) =>
             (participantId === 'all' || s.participantId === participantId) &&
-            `${s.description} ${s.location} ${data.participants.find((p) => p.id === s.participantId)?.name || ''} ${data.staff.find((p) => p.id === s.staffId)?.name || ''}`
+            `${shiftTitle(s, data.events)} ${s.description} ${s.location} ${data.participants.find((p) => p.id === s.participantId)?.name || ''} ${data.staff.find((p) => p.id === s.staffId)?.name || ''}`
               .toLowerCase()
               .includes(search.toLowerCase()),
         )
@@ -405,7 +351,7 @@ export default function App() {
       <div className="loading-page">
         <Brand />
         <Spinner />
-        <p>Getting your support space ready…</p>
+        <p>Loading…</p>
       </div>
     );
   if (bootError)
@@ -438,8 +384,23 @@ export default function App() {
       Date.parse(s.end) > weekStart &&
       Date.parse(s.start) < weekEnd,
   );
-  const activeParticipants = data.participants.filter((p) => p.supportType !== 'none');
-  const participantOptions = data.participants.filter(
+  const currentParticipants = data.participants.filter(isActiveParticipant);
+  const activeParticipants = currentParticipants.filter((p) => p.supportType !== 'none');
+  const periodRequests = matchingShifts
+    .filter((s) => isPastSupport(s) === (requestPeriod === 'past'))
+    .sort((a, b) =>
+      requestPeriod === 'past' ? b.start.localeCompare(a.start) : a.start.localeCompare(b.start),
+    );
+  const visibleRequests =
+    requestFilter === 'pending'
+      ? periodRequests.filter((s) => s.status === 'requested' || s.pendingChange)
+      : periodRequests;
+  const visibleEvents = data.events
+    .filter((e) => Date.parse(e.end) <= Date.now() === (eventPeriod === 'past'))
+    .sort((a, b) =>
+      eventPeriod === 'past' ? b.start.localeCompare(a.start) : a.start.localeCompare(b.start),
+    );
+  const participantOptions = currentParticipants.filter(
     (p) => showHidden || p.supportType !== 'none' || !staff,
   );
   const upcoming = data.shifts
@@ -514,19 +475,6 @@ export default function App() {
           </>
         )}
         <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <span className="note-flower">✳</span>
-            <h3>
-              People first.
-              <br />
-              Plans that follow.
-            </h3>
-            <p>A little coordination makes room for a lot of possibility.</p>
-            <span>
-              THAT’S THE MTM WAY
-              <ArrowUpRight size={14} />
-            </span>
-          </div>
           {demoMode && (
             <button
               className="switch-demo"
@@ -598,40 +546,9 @@ export default function App() {
         <main className="main-content">
           <div className="page-heading">
             <div>
-              <div className="eyebrow">
-                {page === 'schedule'
-                  ? 'A LITTLE PLANNING. MORE POSSIBILITY.'
-                  : page === 'participants'
-                    ? 'THE PEOPLE AT THE HEART OF IT'
-                    : page === 'requests'
-                      ? 'GOOD SUPPORT STARTS HERE'
-                      : page === 'events'
-                        ? 'BETTER EXPERIENCES, TOGETHER'
-                        : 'KEEP EVERYONE ON THE SAME PAGE'}
-              </div>
               <h1>
-                {staff
-                  ? pageNames[page]
-                  : page === 'schedule'
-                    ? `Your support, ${data.user.name.split(' ')[0]}.`
-                    : pageNames[page]}
+                {staff ? pageNames[page] : page === 'schedule' ? 'My support' : pageNames[page]}
               </h1>
-              <p>
-                {
-                  {
-                    schedule: staff
-                      ? 'A clear view of the week, and the people you’re supporting.'
-                      : 'See what’s coming up, make a plan, and let us know what you need.',
-                    requests: 'Review new requests and changes, with the whole picture in view.',
-                    participants: 'Support that fits each person, whatever their plans look like.',
-                    events: 'From an RSVP to the right support, with room on either side.',
-                    integration:
-                      'Connect your support requests to the tools your team already uses.',
-                    workers: 'Manage the people available for support assignments.',
-                    accounts: 'Invite people and choose whose support they can access.',
-                  }[page]
-                }
-              </p>
             </div>
             {page !== 'integration' && page !== 'accounts' && page !== 'workers' && (
               <button
@@ -684,7 +601,7 @@ export default function App() {
                   label="Awaiting approval"
                   value={pending.length}
                   detail={
-                    staff ? 'A little attention needed' : 'Your coordinator will review these'
+                    staff ? 'Awaiting approval' : 'Your coordinator will review these'
                   }
                   color="peach"
                   action={() => navigate('requests')}
@@ -801,14 +718,29 @@ export default function App() {
                     </button>
                   )}
                 </div>
-                <span>
-                  <ShieldCheck size={13} />A space built around you
-                </span>
               </div>
             </>
           )}
           {page === 'requests' && (
             <section className="content-panel">
+              <div className="panel-toolbar">
+                <div className="tab-buttons" role="tablist" aria-label="Request period">
+                  {(['upcoming', 'past'] as const).map((period) => (
+                    <button
+                      key={period}
+                      role="tab"
+                      aria-selected={requestPeriod === period}
+                      className={requestPeriod === period ? 'active' : ''}
+                      onClick={() => {
+                        setRequestPeriod(period);
+                        setRequestFilter('all');
+                      }}
+                    >
+                      {period === 'upcoming' ? 'Upcoming' : 'Past / completed'}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="panel-toolbar">
                 <div className="tab-buttons">
                   <button
@@ -834,23 +766,16 @@ export default function App() {
                   />
                 </div>
               </div>
-              {(requestFilter === 'pending'
-                ? matchingShifts.filter((s) => s.status === 'requested' || s.pendingChange)
-                : matchingShifts
-              ).length ? (
+              {visibleRequests.length ? (
                 <ShiftList
-                  shifts={
-                    requestFilter === 'pending'
-                      ? matchingShifts.filter((s) => s.status === 'requested' || s.pendingChange)
-                      : matchingShifts
-                  }
+                  shifts={visibleRequests}
                   data={data}
                   onSelect={(s) => setSelectedShiftId(s.id)}
                 />
               ) : (
-                <Empty title={search ? 'No matching requests' : 'You’re all up to date'}>
+                <Empty title={search ? 'No matching requests' : 'No requests in this view'}>
                   {search
-                    ? 'Try another name or support description.'
+                    ? 'Try another name, event or support description.'
                     : 'New requests and shift changes will appear here for review.'}
                 </Empty>
               )}
@@ -865,6 +790,19 @@ export default function App() {
           {page === 'participants' && staff && (
             <>
               <div className="participant-toolbar">
+                <button
+                  className="secondary-button"
+                  disabled={busy || !data.integration.configured || demoMode}
+                  onClick={() =>
+                    void globalAction(
+                      () => post('/integrations/airtable/participants'),
+                      'Participant statuses refreshed.',
+                    )
+                  }
+                >
+                  <RefreshCw size={16} />
+                  Refresh participants
+                </button>
                 <div className="search-field">
                   <Search size={16} />
                   <input
@@ -882,18 +820,24 @@ export default function App() {
                       setShowHidden(e.target.checked);
                       if (
                         !e.target.checked &&
-                        data.participants.find((p) => p.id === participantId)?.supportType ===
+                        currentParticipants.find((p) => p.id === participantId)?.supportType ===
                           'none'
                       )
                         setParticipantId('all');
                     }}
                   />
                   Show no regular support
-                  <span>{data.participants.filter((p) => p.supportType === 'none').length}</span>
+                  <span>{currentParticipants.filter((p) => p.supportType === 'none').length}</span>
                 </label>
               </div>
+              {data.participantActivity?.error && (
+                <ErrorNotice>{data.participantActivity.error}</ErrorNotice>
+              )}
+              <p className="field-hint">
+                Showing active participants. Airtable status refreshes every five minutes.
+              </p>
               <section className="participant-grid">
-                {data.participants
+                {currentParticipants
                   .filter(
                     (p) =>
                       (showHidden || p.supportType !== 'none') &&
@@ -910,7 +854,7 @@ export default function App() {
                           </span>
                         </div>
                         <h3>{p.name}</h3>
-                        <p>{p.notes || 'A plan built around their preferences.'}</p>
+                        {p.notes && <p>{p.notes}</p>}
                         <label>
                           Support setting
                           <select
@@ -976,7 +920,7 @@ export default function App() {
                     );
                   })}
               </section>
-              {!data.participants.filter(
+              {!currentParticipants.filter(
                 (p) =>
                   (showHidden || p.supportType !== 'none') &&
                   p.name.toLowerCase().includes(search.toLowerCase()),
@@ -988,21 +932,35 @@ export default function App() {
               <div className="info-strip">
                 <CalendarHeart size={19} />
                 <p>
-                  <strong>Event support, without the extra admin.</strong> Participants set to event
-                  support or both receive a shift request when they RSVP, including 30 minutes
-                  before and after.
+                  <strong>Event support.</strong> Participants set to event support or both receive
+                  a shift request when they RSVP, including 30 minutes before and after.
                 </p>
               </div>
             </>
           )}
           {page === 'events' && (
             <>
+              <div className="panel-toolbar">
+                <div className="tab-buttons" role="tablist" aria-label="Event period">
+                  {(['upcoming', 'past'] as const).map((period) => (
+                    <button
+                      key={period}
+                      role="tab"
+                      aria-selected={eventPeriod === period}
+                      className={eventPeriod === period ? 'active' : ''}
+                      onClick={() => setEventPeriod(period)}
+                    >
+                      {period === 'upcoming' ? 'Upcoming' : 'Past / completed'}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="event-rule-banner">
                 <div className="event-rule-icon">
                   <Sparkles size={23} />
                 </div>
                 <div>
-                  <h3>A little extra time makes all the difference.</h3>
+                  <h3>Event support times</h3>
                   <p>
                     Eligible RSVPs become support requests, with 30 minutes on either side of the
                     event.
@@ -1012,10 +970,10 @@ export default function App() {
               </div>
               <div className="section-heading">
                 <h2>{staff ? 'Events & RSVPs' : 'Your events'}</h2>
-                <span>{data.events.length} events</span>
+                <span>{visibleEvents.length} events</span>
               </div>
               <div className="event-grid">
-                {data.events.map((event, index) => (
+                {visibleEvents.map((event, index) => (
                   <button
                     key={event.id}
                     className={`event-card event-theme-${index % 3}`}
@@ -1055,8 +1013,8 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              {!data.events.length && (
-                <Empty title="Something to look forward to">
+              {!visibleEvents.length && (
+                <Empty title="No events in this view">
                   Events linked to your support will appear here.
                 </Empty>
               )}
@@ -1229,7 +1187,7 @@ export default function App() {
               <div className="integration-info-grid">
                 <section className="content-panel integration-guide">
                   <span className="eyebrow">THE CONNECTION</span>
-                  <h3>One request. In both places.</h3>
+                  <h3>Connection setup</h3>
                   <ol>
                     <li>
                       <span>01</span>
@@ -1265,7 +1223,7 @@ export default function App() {
                 </section>
                 <section className="content-panel integration-guide">
                   <span className="eyebrow">YOUR TABLES</span>
-                  <h3>A familiar home for your data.</h3>
+                  <h3>Table mappings</h3>
                   <div className="mapping-row">
                     <strong>Shift Requests</strong>
                     <span>Requests, status & preferences</span>
@@ -1305,7 +1263,6 @@ export default function App() {
           )}
         </main>
         <footer className="app-footer">
-          <span>Thoughtful support. Real connections.</span>
           <span>MTM · Support bookings</span>
         </footer>
       </div>

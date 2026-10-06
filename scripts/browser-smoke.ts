@@ -61,7 +61,7 @@ async function openRequest(page: Page, description: string) {
 }
 try {
   await staff.goto(baseURL);
-  await expect(staff.getByRole('heading', { name: 'Good to see you.' })).toBeVisible();
+  await expect(staff.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   const config = await (await staff.request.get(`${baseURL}/api/config`)).json();
   assert.equal(config.demoMode, true, 'Smoke checks are permitted only in explicit demo mode');
   await screenshot(staff, 'login-desktop');
@@ -82,7 +82,7 @@ try {
 
   await client.goto(baseURL);
   await client.getByRole('button', { name: 'Client portal', exact: true }).click();
-  await expect(client.getByRole('heading', { name: 'Your support, Alex.' })).toBeVisible();
+  await expect(client.getByRole('heading', { name: 'My support' })).toBeVisible();
   await screenshot(client, 'client-desktop');
   await client.setViewportSize({ width: 390, height: 844 });
   await screenshot(client, 'client-mobile');

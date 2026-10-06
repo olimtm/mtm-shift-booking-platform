@@ -836,6 +836,7 @@ test('all participant, staff, and integration endpoints require authentication b
       ['GET', '/api/dashboard'],
       ['GET', '/api/integrations/airtable/schema'],
       ['POST', '/api/integrations/airtable/import', {}],
+      ['POST', '/api/integrations/airtable/participants', {}],
       ['POST', '/api/integrations/airtable/sync', {}],
       ['POST', '/api/shifts', input('p-alex')],
       ['PATCH', '/api/shifts/shift-1', { action: 'cancel' }],
@@ -1878,6 +1879,69 @@ test('long locations survive client requests, approval, edits and event creation
         })
       ).status,
       400,
+    );
+  } finally {
+    await app.close();
+  }
+});
+
+test('manual event requests retain the selected event, stay scoped and share RSVP duplicate protection', async () => {
+  const app = await fixture();
+  try {
+    const staff = app.session();
+    const client = app.session();
+    await login(staff, 'staff');
+    await login(client, 'client');
+    const data = (await staff<DashboardData>('GET', '/api/dashboard')).body;
+    const participant = data.participants.find((p) => p.id === 'p-alex') || data.participants[0];
+    const times = input(participant.id);
+    const event = (
+      await staff<{ event: SupportEvent }>('POST', '/api/events', {
+        title: 'Selected event',
+        start: times.start,
+        end: times.end,
+        location: 'Venue',
+        description: '',
+      })
+    ).body.event;
+    const request = { ...times, kind: 'event', eventId: event.id };
+    assert.equal(
+      (await client('POST', '/api/shifts', request)).status,
+      404,
+      'client cannot select an unlinked event',
+    );
+    const created = await staff<{ shift: Shift }>('POST', '/api/shifts', request);
+    assert.equal(created.status, 201);
+    assert.equal(created.body.shift.eventId, event.id);
+    assert.equal((await staff('POST', '/api/shifts', request)).status, 409);
+    assert.equal(
+      (
+        await staff('POST', '/api/events/' + event.id + '/rsvps', {
+          participantId: participant.id,
+          status: 'attending',
+        })
+      ).status,
+      200,
+    );
+    const next = (await staff<DashboardData>('GET', '/api/dashboard')).body;
+    assert.equal(
+      next.shifts.filter((s) => s.eventId === event.id && s.participantId === participant.id)
+        .length,
+      1,
+    );
+    assert.equal(
+      (
+        await staff('PATCH', '/api/shifts/' + created.body.shift.id, {
+          action: 'edit',
+          values: { ...request, eventId: 'different' },
+        })
+      ).status,
+      400,
+    );
+    assert.ok(
+      (await client<DashboardData>('GET', '/api/dashboard')).body.events.some(
+        (e) => e.id === event.id,
+      ),
     );
   } finally {
     await app.close();

@@ -21,6 +21,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:accounts
       - run: npm run test:import
+      - run: npm run test:qol
       - name: Booking and worker browser checks
         env:
           DEMO_MODE: 'true'
