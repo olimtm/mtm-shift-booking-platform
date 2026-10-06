@@ -976,15 +976,12 @@ export default function App() {
                     className={`event-card event-theme-${index % 3}`}
                     onClick={() => setSelectedEventId(event.id)}
                   >
-                    <div className="event-art">
-                      <span className="event-art-circle circle-a" />
-                      <span className="event-art-circle circle-b" />
-                      <CalendarHeart size={42} strokeWidth={1.2} />
+                    <div className="event-card-top">
                       <div className="event-date">
                         <strong>{fmt(event.start, { day: 'numeric' }, data.timezone)}</strong>
                         <span>{fmt(event.start, { month: 'short' }, data.timezone)}</span>
                       </div>
-                      <span className="event-art-star">✳</span>
+                      <CalendarHeart size={24} strokeWidth={1.5} aria-hidden="true" />
                     </div>
                     <div className="event-card-body">
                       <span className="event-day-label">

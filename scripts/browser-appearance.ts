@@ -59,12 +59,19 @@ async function audit(page: Page, name: string) {
       return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
     }
     const colours = ['#73cbe9', '#f877b0', '#0e2647', '#ffffff', '#000000'].map(rgba);
-    // A blue/white page tint is the only extra solid surface; overlays/shadows
-    // are checked through actual compositing when calculating text contrast.
-    const surface = [...colours[0].slice(0, 3).map((v) => Math.round(v * 0.1 + 255 * 0.9)), 255];
-    const allowed = [...colours, surface];
+    // Brand colours may be softened with white. Test the actual rendered colour
+    // against that palette, then check contrast on the resulting surface.
     function matches(value: number[]) {
-      return allowed.some((rgb) => value.every((v, i) => Math.abs(v - rgb[i]) <= 1));
+      return colours.some((rgb) => {
+        const channel = rgb.slice(0, 3).indexOf(Math.min(...rgb.slice(0, 3)));
+        if (rgb[channel] === 255) return value.slice(0, 3).every((v) => v >= 254);
+        const tint = (255 - value[channel]) / (255 - rgb[channel]);
+        return (
+          tint >= 0 &&
+          tint <= 1 &&
+          value.slice(0, 3).every((v, i) => Math.abs(v - (rgb[i] * tint + 255 * (1 - tint))) <= 2)
+        );
+      });
     }
     let textCount = 0;
     const modal = document.querySelector('[role="dialog"]');
@@ -82,6 +89,11 @@ async function audit(page: Page, name: string) {
       const bg = rgba(s.backgroundColor);
       if (bg[3] === 255 && !matches(bg))
         issues.push(`Off-palette background ${s.backgroundColor}: ${el.className}`);
+      if (
+        colours.slice(0, 2).some((rgb) => bg.every((v, i) => Math.abs(v - rgb[i]) <= 1)) &&
+        el.getBoundingClientRect().width * el.getBoundingClientRect().height > 4096
+      )
+        issues.push(`Large solid accent fill: ${el.className}`);
       const text =
         [...el.childNodes]
           .filter((n) => n.nodeType === Node.TEXT_NODE)
@@ -94,9 +106,15 @@ async function audit(page: Page, name: string) {
       if (!text) continue;
       textCount++;
       const description = `${el.tagName}.${el.className} (${text.slice(0, 45)})`;
-      if (parseFloat(s.fontSize) < 16)
-        issues.push(`Text below 16px: ${description}: ${s.fontSize}`);
-      if (parseFloat(s.fontWeight) < 500)
+      if (parseFloat(s.fontSize) < 13)
+        issues.push(`Text below 13px: ${description}: ${s.fontSize}`);
+      if (
+        innerWidth <= 600 &&
+        el.matches('input:not([type=checkbox]),select,textarea') &&
+        parseFloat(s.fontSize) < 16
+      )
+        issues.push(`Mobile form control below 16px: ${description}: ${s.fontSize}`);
+      if (parseFloat(s.fontWeight) < 400)
         issues.push(`Light text: ${description}: ${s.fontWeight}`);
       const fg = rgba(s.color);
       if (!matches(fg)) issues.push(`Off-palette text: ${description}: ${s.color}`);
@@ -199,7 +217,7 @@ try {
   );
   assert.deepEqual(failures, []);
   console.log(
-    `Appearance passed: ${screens} screens, ${textSamples} text samples; MTM palette, 16px minimum, weight >=500, contrast >=4.5:1, no page overflow.`,
+    `Appearance passed: ${screens} screens, ${textSamples} text samples; MTM tints, no large solid accent fills, 13px minimum labels, 16px mobile inputs, contrast >=4.5:1, no page overflow.`,
   );
 } finally {
   await browser.close();

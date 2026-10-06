@@ -2,9 +2,11 @@
 
 The portal uses the exact MTM palette supplied in the gameshow setup: primary blue `#73cbe9`, primary pink `#f877b0`, navy/text `#0e2647`, white `#ffffff`, and black `#000000` (navy is preferred for portal text). All UI colours come from the tokens at the top of `client/styles.css`; the page surface and shadows are mixtures of those tokens. No green, amber, purple or grey status palette remains. Original Drive logo images are preserved without recolouring.
 
-Body text, labels, dates, badges and form controls stay at least 16px on desktop and mobile. Headings use larger, heavier type. Navy text has contrast ratios of 8.25:1 on blue, 5.95:1 on pink and 15.14:1 on white. White text is reserved for navy surfaces. Controls have navy borders and visible keyboard focus. Status wording and icons remain visible; pending calendar items also use dashed borders, so status never depends on colour alone. Weekly calendar columns scroll within their panel to retain readable text. Promotional slogans stay removed.
+The visual theme uses white cards, a near-white navy-tinted canvas, and soft blue/pink fills. Primary colours remain exact at the token level; backgrounds, dividers, muted text and shadows mix those colours with white or transparency. Strong accents are limited to small details and navy primary actions. Event cards use compact date chips instead of large decorative banners.
 
-`npm run test:appearance` checks rendered text size, weight, contrast, palette and responsive overflow across staff/client views, request dialogs and account access screens.
+Type follows a hierarchy: 15–16px body text, 13–14px secondary labels and status pills, and 28–32px page headings. Regular and medium weights replace blanket bold styling. Mobile text inputs stay at 16px to avoid browser zoom. Rendered text retains at least 4.5:1 contrast, and keyboard focus remains distinct. Status labels and icons stay visible, with fine dashed outlines for pending calendar items. Calendar columns scroll within their panel and retain sufficient width for overlapping bookings. Promotional slogans stay removed.
+
+`npm run test:appearance` checks brand colours and their white tints, prevents large solid blue/pink panels, and verifies rendered contrast, text sizes, mobile inputs, calendar lanes and responsive overflow across staff/client views, request dialogs and account access screens.
 
 Asset sources:
 
