@@ -12,6 +12,12 @@ The requested default is staff approval for new requests, changes, and cancellat
 
 The current form captures preferences; it does not certify a worker's driving capability or gender. A coordinator is responsible for matching those preferences. Recurring shifts, billing, client notification delivery, and staff availability calendars are not implemented in this version.
 
+### Worker roster
+
+With Airtable connected, the portal refreshes the Staff roster at startup and every five minutes. **Active** and **Active - Volunteer** staff appear as assignable workers unless **Archived** is checked. Coordinators can use **Support workers → Refresh workers** to refresh immediately. Airtable controls worker names and activity; the portal controls assignments and approvals. Sync never grants a login.
+
+Inactive, archived or deleted Airtable staff are excluded from new assignments. Existing bookings retain their worker and status until a coordinator changes them. Returning workers reuse their existing portal identity. Existing local workers remain available; matching names are never merged automatically. A failed refresh keeps the previous complete roster and displays an error on Support workers.
+
 ## Participant support settings
 
 | Setting | Default staff roster   | Manual requests | Automatic event support |

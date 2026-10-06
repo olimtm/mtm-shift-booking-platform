@@ -1,4 +1,9 @@
-import type { Participant, Shift, SupportEvent } from './types';
+import type { Participant, Shift, StaffMember, SupportEvent } from './types';
+
+// Keep legacy/local workers usable until their first successful roster refresh.
+export function isActiveWorker(worker: StaffMember): boolean {
+  return worker.active !== false;
+}
 
 // Keep inactive identities in the database so historical bookings retain their names.
 export function isActiveParticipant(person: Participant): boolean {

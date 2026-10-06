@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { Plus, Pencil } from 'lucide-react';
+import { Plus, Pencil, RefreshCw } from 'lucide-react';
 import type { DashboardData, StaffMember } from '../shared/types';
+import { isActiveWorker } from '../shared/views';
 import { post, patch } from './api';
 import { Avatar, Empty, ErrorNotice, Modal, Spinner } from './ui';
 
@@ -16,6 +17,22 @@ export default function Workers({
   const [airtableId, setAirtableId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
+  const workers = data.staff.filter(isActiveWorker);
+  const automatic = data.workerSync?.automatic;
+  async function refreshWorkers() {
+    setRefreshing(true);
+    setRefreshError('');
+    try {
+      await post('/integrations/airtable/workers', {});
+      await onSaved();
+    } catch (error) {
+      setRefreshError((error as Error).message);
+    } finally {
+      setRefreshing(false);
+    }
+  }
   function open(worker: StaffMember | 'new') {
     setEditing(worker);
     setName(worker === 'new' ? '' : worker.name);
@@ -43,35 +60,63 @@ export default function Workers({
     <section className="accounts-page">
       <div className="accounts-intro">
         <p>
-          Add workers here to make them available for shift assignments. This does not give them a
-          portal login.
+          {automatic
+            ? 'Active staff and active volunteers sync from Airtable every five minutes.'
+            : 'Add workers to assign shifts. Workers do not receive a portal login.'}
         </p>
-        <button className="primary-button" onClick={() => open('new')}>
-          <Plus size={17} />
-          Add worker
-        </button>
+        {automatic ? (
+          <button className="secondary-button" disabled={refreshing} onClick={refreshWorkers}>
+            {refreshing ? <Spinner /> : <RefreshCw size={17} />}
+            Refresh workers
+          </button>
+        ) : (
+          <button className="primary-button" onClick={() => open('new')}>
+            <Plus size={17} />
+            Add worker
+          </button>
+        )}
       </div>
-      {data.staff.length === 0 && (
-        <Empty title="No support workers yet">
-          Add your first support worker to start assigning shifts.
+      {automatic && data.workerSync?.checkedAt && (
+        <p className="field-hint">
+          Last synced{' '}
+          {new Date(data.workerSync.checkedAt).toLocaleString('en-AU', { timeZone: data.timezone })}
+          .
+        </p>
+      )}
+      {(refreshError || data.workerSync?.error) && (
+        <ErrorNotice>{refreshError || data.workerSync?.error}</ErrorNotice>
+      )}
+      {workers.length === 0 && (
+        <Empty title="No active support workers">
+          {automatic
+            ? 'Refresh workers to check the current Airtable staff list.'
+            : 'Add your first support worker to start assigning shifts.'}
         </Empty>
       )}
       <div className="content-panel accounts-panel">
-        {data.staff.map((worker) => (
+        {workers.map((worker) => (
           <article className="account-row" key={worker.id}>
             <Avatar name={worker.name} color={worker.color} />
             <div className="account-person">
               <h3>{worker.name}</h3>
-              <p>{worker.airtableId ? 'Linked to Airtable' : 'Not linked to Airtable'}</p>
+              <p>
+                {worker.airtableManaged
+                  ? 'Synced from Airtable'
+                  : worker.airtableId
+                    ? 'Linked to Airtable'
+                    : 'Local worker'}
+              </p>
             </div>
-            <button
-              className="secondary-button"
-              onClick={() => open(worker)}
-              aria-label={`Edit worker ${worker.name}`}
-            >
-              <Pencil size={15} />
-              Edit worker
-            </button>
+            {!worker.airtableManaged && (
+              <button
+                className="secondary-button"
+                onClick={() => open(worker)}
+                aria-label={`Edit worker ${worker.name}`}
+              >
+                <Pencil size={15} />
+                Edit worker
+              </button>
+            )}
           </article>
         ))}
       </div>

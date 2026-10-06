@@ -1744,6 +1744,105 @@ test('coordinators manage assignable workers without granting login access or re
   }
 });
 
+test('inactive workers retain bookings but cannot receive new assignments or approvals', async () => {
+  const app = await fixture();
+  try {
+    const coordinator = app.session(),
+      client = app.session();
+    await login(coordinator, 'staff');
+    await login(client, 'client');
+    const worker = {
+      id: 'inactive-worker',
+      name: 'Past Worker',
+      initials: 'PW',
+      color: 'blue',
+      active: false,
+      airtableManaged: true,
+      airtableId: 'rec55555555555555',
+    };
+    app.store.put('staff', worker);
+    assert.equal(
+      (await app.session()('POST', '/api/integrations/airtable/workers', {})).status,
+      401,
+    );
+    assert.equal((await client('POST', '/api/integrations/airtable/workers', {})).status, 403);
+    for (const status of ['requested', 'confirmed'])
+      assert.equal(
+        (
+          await coordinator('POST', '/api/shifts', {
+            ...input('p-alex'),
+            staffId: worker.id,
+            status,
+          })
+        ).status,
+        409,
+      );
+    const requested = (await coordinator<{ shift: Shift }>('POST', '/api/shifts', input('p-alex')))
+      .body.shift;
+    app.store.put('shifts', { ...requested, staffId: worker.id });
+    assert.equal(
+      (await coordinator('PATCH', `/api/shifts/${requested.id}`, { action: 'approve' })).status,
+      409,
+    );
+    assert.equal(
+      (
+        await coordinator('PATCH', `/api/shifts/${requested.id}`, {
+          action: 'assign',
+          staffId: worker.id,
+        })
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await coordinator('PATCH', `/api/workers/${worker.id}`, {
+          name: 'New name',
+          airtableId: worker.airtableId,
+        })
+      ).status,
+      409,
+    );
+    assert.deepEqual(app.store.get('staff', worker.id), worker);
+    assert.equal(app.store.get('shifts', requested.id)?.status, 'requested');
+    const dashboard = (await coordinator<DashboardData>('GET', '/api/dashboard')).body;
+    assert(
+      dashboard.staff.some((w) => w.id === worker.id),
+      'retain the name for historical bookings',
+    );
+    assert(dashboard.workerSync);
+    const clientDashboard = (await client<DashboardData>('GET', '/api/dashboard')).body;
+    assert.equal(clientDashboard.workerSync, undefined);
+    assert(clientDashboard.staff.some((w) => w.id === worker.id));
+    assert.equal(
+      (
+        await coordinator('PATCH', `/api/shifts/${requested.id}`, {
+          action: 'approve',
+          staffId: null,
+        })
+      ).status,
+      200,
+    );
+    const confirmed = app.store.get('shifts', requested.id)!;
+    app.store.put('shifts', { ...confirmed, staffId: worker.id });
+    assert.equal(
+      (
+        await coordinator('PATCH', `/api/shifts/${requested.id}`, {
+          action: 'assign',
+          staffId: worker.id,
+        })
+      ).status,
+      409,
+    );
+    assert.equal(
+      (await coordinator('PATCH', `/api/shifts/${requested.id}`, { action: 'cancel' })).status,
+      200,
+      'inactive assignment must not block cancellation',
+    );
+  } finally {
+    await app.close();
+  }
+});
+
 test('staff see safe Airtable connection diagnostics without upstream data or credentials', async (context) => {
   const previous = Object.fromEntries(
     Object.entries(process.env).filter(([key]) => key.startsWith('AIRTABLE_')),
@@ -1802,6 +1901,7 @@ test('staff see safe Airtable connection diagnostics without upstream data or cr
       for (const [method, route] of [
         ['GET', 'schema'],
         ['POST', 'import'],
+        ['POST', 'workers'],
       ] as const) {
         const result = await staff<{ error: string }>(
           method,

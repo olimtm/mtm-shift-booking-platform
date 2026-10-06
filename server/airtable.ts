@@ -625,6 +625,14 @@ export async function readAirtableRecords(
   selectedFields?: string[],
 ): Promise<Array<{ id: string; fields: Record<string, unknown> }>> {
   const config = requireConfiguration(env);
+  return readRecordsFromTable(config, config.tables[table], selectedFields);
+}
+
+async function readRecordsFromTable(
+  config: AirtableConfig,
+  table: string,
+  selectedFields?: string[],
+): Promise<Array<{ id: string; fields: Record<string, unknown> }>> {
   const records: Array<{ id: string; fields: Record<string, unknown> }> = [];
   let offset: string | undefined;
   const seen = new Set<string>();
@@ -636,12 +644,11 @@ export async function readAirtableRecords(
     const page = await request<{
       records: Array<{ id: string; fields: Record<string, unknown> }>;
       offset?: string;
-    }>(
-      config,
-      `${encodeURIComponent(config.baseId)}/${encodeURIComponent(config.tables[table])}?${query}`,
-    );
+    }>(config, `${encodeURIComponent(config.baseId)}/${encodeURIComponent(table)}?${query}`);
     if (!Array.isArray(page.records))
       throw new Error('Airtable returned an invalid records response.');
+    if (page.offset != null && (typeof page.offset !== 'string' || !page.offset))
+      throw new Error('Airtable returned an invalid pagination cursor.');
     records.push(...page.records);
     offset = page.offset;
     if (offset && seen.has(offset))
@@ -1189,4 +1196,146 @@ export async function readParticipantActivity(
       active: typeof value === 'string' && normalizeLabel(value) === 'active',
     };
   });
+}
+
+export interface AirtableStaffSnapshot {
+  workers: Array<{ airtableId: string; name: string; active: boolean }>;
+  staffRecords: Record<string, string>;
+}
+
+/** Read the complete staff lifecycle snapshot, never employment/contact details.
+ * Validate all pages before allowing callers to update the local worker list. */
+export async function readAirtableStaff(
+  env: Environment = process.env,
+): Promise<AirtableStaffSnapshot> {
+  const config = requireConfiguration(env);
+  const tableName = env.AIRTABLE_STAFF_TABLE?.trim() || 'Staff';
+  const nameMapping = env.AIRTABLE_STAFF_NAME_FIELD?.trim() || 'Name';
+  const statusMapping = env.AIRTABLE_STAFF_STATUS_FIELD?.trim() || 'Status';
+  const archivedMapping = env.AIRTABLE_STAFF_ARCHIVED_FIELD?.trim() || 'Archived';
+  let activeStatuses = ['Active', 'Active - Volunteer'].map(normalizeLabel);
+  if (env.AIRTABLE_STAFF_ACTIVE_STATUSES) {
+    try {
+      const value: unknown = JSON.parse(env.AIRTABLE_STAFF_ACTIVE_STATUSES);
+      if (
+        !Array.isArray(value) ||
+        !value.length ||
+        value.some((v) => typeof v !== 'string' || !v.trim())
+      )
+        throw new Error();
+      activeStatuses = value.map(normalizeLabel);
+    } catch {
+      throw new AirtableImportError(
+        'AIRTABLE_STAFF_ACTIVE_STATUSES must be a JSON list of active staff status labels.',
+      );
+    }
+  }
+  const metadata = await request<{ tables: MetadataTable[] }>(
+    config,
+    `meta/bases/${encodeURIComponent(config.baseId)}/tables`,
+  );
+  if (!Array.isArray(metadata.tables))
+    throw new AirtableImportError(
+      'Could not inspect the Staff table. The previous worker list is preserved.',
+    );
+  const table = metadata.tables.find((t) => t.id === tableName || t.name === tableName);
+  const nameField = table?.fields.find((f) => f.id === nameMapping || f.name === nameMapping);
+  const statusField = table?.fields.find((f) => f.id === statusMapping || f.name === statusMapping);
+  const archivedField = table?.fields.find(
+    (f) => f.id === archivedMapping || f.name === archivedMapping,
+  );
+  if (
+    !table ||
+    !nameField ||
+    !(
+      TEXT_TYPES.includes(nameField.type) ||
+      (nameField.type === 'formula' && TEXT_TYPES.includes(nameField.options?.result?.type || ''))
+    )
+  )
+    throw new AirtableImportError(
+      'Map Staff > Name to a text field or scalar text formula before refreshing workers.',
+    );
+  if (!statusField || !SELECT_TYPES.includes(statusField.type))
+    throw new AirtableImportError(
+      'Map Staff > Status to a text or single-select field before refreshing workers.',
+    );
+  if (
+    (archivedField && archivedField.type !== 'checkbox') ||
+    (env.AIRTABLE_STAFF_ARCHIVED_FIELD && !archivedField)
+  )
+    throw new AirtableImportError('Staff > Archived must be a checkbox when configured.');
+  if (
+    statusField.options?.choices &&
+    activeStatuses.some(
+      (status) =>
+        !statusField.options!.choices!.some((choice) => normalizeLabel(choice.name) === status),
+    )
+  )
+    throw new AirtableImportError(
+      'An active worker status is missing from Staff > Status. Check AIRTABLE_STAFF_ACTIVE_STATUSES.',
+    );
+  if (
+    new Set([nameField.id, statusField.id, ...(archivedField ? [archivedField.id] : [])]).size !==
+    (archivedField ? 3 : 2)
+  )
+    throw new AirtableImportError(
+      'Worker name, status and archived mappings must use different fields.',
+    );
+  if (config.fields.shifts.staff) {
+    const shifts = metadata.tables.find(
+      (t) => t.id === config.tables.shifts || t.name === config.tables.shifts,
+    );
+    const assignment = shifts?.fields.find(
+      (f) => f.id === config.fields.shifts.staff || f.name === config.fields.shifts.staff,
+    );
+    if (
+      assignment?.type !== 'multipleRecordLinks' ||
+      assignment.options?.linkedTableId !== table.id
+    )
+      throw new AirtableImportError(
+        'The mapped shift assignment field must link to the configured Staff table.',
+      );
+  }
+  const records = await readRecordsFromTable(config, table.id, [
+    nameField.name,
+    statusField.name,
+    ...(archivedField ? [archivedField.name] : []),
+  ]);
+  const ids = new Set<string>();
+  const workers = records.map((record) => {
+    if (
+      !record ||
+      !record.fields ||
+      typeof record.fields !== 'object' ||
+      Array.isArray(record.fields)
+    )
+      throw new AirtableImportError(
+        'A Staff record could not be read. The previous worker list is preserved.',
+      );
+    const name = record.fields?.[nameField.name];
+    const status = record.fields?.[statusField.name];
+    const archived = archivedField ? record.fields?.[archivedField.name] : undefined;
+    if (
+      !isRecordId(record.id) ||
+      ids.has(record.id) ||
+      (status != null && typeof status !== 'string') ||
+      (name != null && typeof name !== 'string') ||
+      (archived != null && typeof archived !== 'boolean')
+    )
+      throw new AirtableImportError(
+        'A Staff record could not be read. The previous worker list is preserved.',
+      );
+    ids.add(record.id);
+    const active =
+      typeof status === 'string' &&
+      activeStatuses.includes(normalizeLabel(status)) &&
+      archived !== true;
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if ((active && !trimmedName) || trimmedName.length > 150)
+      throw new AirtableImportError(
+        'Each active Staff record needs a name of at most 150 characters. The previous worker list is preserved.',
+      );
+    return { airtableId: record.id, name: trimmedName, active };
+  });
+  return { workers, staffRecords: config.staffRecords };
 }

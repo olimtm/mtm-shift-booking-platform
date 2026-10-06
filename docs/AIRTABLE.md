@@ -30,6 +30,14 @@ Shift changes enter a durable local outbox. The adapter uses Airtable `performUp
 
 HTTP 429 responses honor `Retry-After`, and API errors are sanitized before reaching the portal. Network timeouts and failed writes remain retryable. This is an outgoing portal-to-Airtable request integration plus an incoming event/RSVP webhook; it is **not a general bidirectional synchronization of every Airtable edit**. Staff approval and assignment should be performed in the portal until an explicit inbound approvals workflow and conflict policy are added. Do not allow a second automation to overwrite approvals independently.
 
+## Automatic worker roster
+
+The portal reads the existing **Staff** table on startup and every five minutes, including when `AIRTABLE_SYNC_ENABLED=false` (that flag controls outgoing request writes). Staff with **Status = Active** or **Active - Volunteer** and without **Archived** checked become assignable workers. **Support workers → Refresh workers** runs the same read immediately and shows the last successful sync or a safe error. No additional automation or Render setting is needed for MTM's current schema.
+
+The reader checks schema and the assignment link before fetching all pages, requesting only **Name**, **Status** and **Archived**. Name may be a scalar text formula. Updates use Airtable record IDs, retaining imported worker IDs and explicit `AIRTABLE_STAFF_RECORD_MAP` associations. Names are never used to join workers. Renames and reactivation update the existing worker; inactive, archived or missing workers retain their booking history but cannot be selected for new assignments. Existing unlinked local workers are retained. Synced worker details must be edited in Airtable. No approvals, assignments, support settings, outbox entries or login access are changed by roster refreshes. Errors preserve the last complete roster.
+
+Optional settings accept table/field names or IDs: `AIRTABLE_STAFF_TABLE` (default `Staff`), `AIRTABLE_STAFF_NAME_FIELD` (`Name`), `AIRTABLE_STAFF_STATUS_FIELD` (`Status`), and `AIRTABLE_STAFF_ARCHIVED_FIELD` (`Archived`). An absent default Archived field is optional; an explicitly configured field must exist and be a checkbox. `AIRTABLE_STAFF_ACTIVE_STATUSES` can override the default JSON list `["Active","Active - Volunteer"]`; labels must exist in a single-select field. The configured `shifts.staff` link, when enabled, must target this Staff table. Existing PAT permissions already used for schema inspection and record reads are sufficient.
+
 ## Reuse existing fields before adding anything
 
 The default names below are configurable proposals. Match existing compatible fields first. Never delete a field just because the portal does not use it: formulas, interfaces, views, billing, reporting, and existing automations may depend on it. A live audit must also review those dependencies before recommending removals.

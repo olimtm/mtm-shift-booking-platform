@@ -1,4 +1,4 @@
-import { shiftTitle, isActiveParticipant } from '../shared/views';
+import { shiftTitle, isActiveParticipant, isActiveWorker } from '../shared/views';
 import { LOCATION_MAX_LENGTH } from '../shared/limits.js';
 import { useState, type FormEvent } from 'react';
 import {
@@ -467,12 +467,23 @@ export function ShiftDetail({
             Assigned support worker
             <select value={staffId} onChange={(e) => setStaffId(e.target.value)}>
               <option value="">Not assigned yet</option>
-              {data.staff.map((s) => (
+              {worker && !isActiveWorker(worker) && (
+                <option value={worker.id} disabled>
+                  {worker.name} (inactive)
+                </option>
+              )}
+              {data.staff.filter(isActiveWorker).map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
                 </option>
               ))}
             </select>
+            {worker && !isActiveWorker(worker) && (
+              <span className="field-hint">
+                This worker is no longer active. The booking is unchanged; select an active worker
+                to reassign it.
+              </span>
+            )}
             {shift.status === 'confirmed' &&
               (staffId !== (shift.staffId || '') || !!shift.staffDisplayName) && (
                 <button

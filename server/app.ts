@@ -15,6 +15,8 @@ import { Store, type StoredUser } from './db.js';
 import { hashPassword, isConfiguredSecret, publicUser, tokenHash, verifyPassword } from './auth.js';
 import { installAccountRoutes, setupRequired } from './accounts.js';
 import { seedDemo } from './seed.js';
+import { createWorkerSync } from './worker-sync.js';
+import { isActiveWorker } from '../shared/views.js';
 import {
   allRsvps,
   assertStaffAvailable,
@@ -158,6 +160,7 @@ export function createApp(options: AppOptions = {}) {
   const enableSync =
     (options.enableSync ?? process.env.AIRTABLE_SYNC_ENABLED === 'true') && !demoMode;
   const configured = () => !demoMode && getAirtableStatus().configured;
+  const refreshWorkers = createWorkerSync(store, configured);
   app.use('/api', (req: Request, res: Response, next: NextFunction) => {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.path !== '/webhooks/rsvp') {
       if (!req.headers.origin || !allowedOrigins.has(req.headers.origin))
@@ -336,6 +339,11 @@ export function createApp(options: AppOptions = {}) {
               checkedAt: store.meta('participant_activity_checked') || null,
               error: store.meta('participant_activity_error') || null,
             },
+            workerSync: {
+              checkedAt: store.meta('worker_sync_checked') || null,
+              error: store.meta('worker_sync_error') || null,
+              automatic: configured(),
+            },
           }
         : {}),
       user,
@@ -408,6 +416,8 @@ export function createApp(options: AppOptions = {}) {
     );
     if (shift.staffId && !store.get('staff', shift.staffId))
       fail(400, 'Select an existing staff member.');
+    if (shift.staffId && !isActiveWorker(store.get('staff', shift.staffId)!))
+      fail(409, 'This worker is inactive. Select an active worker or leave the shift unassigned.');
     if (shift.status === 'confirmed') assertStaffAvailable(store, shift, shift.staffId);
     store.transaction(() => saveShift(store, shift, configured()));
     res.status(201).json({ shift });
@@ -513,6 +523,11 @@ export function createApp(options: AppOptions = {}) {
         shift.staffDisplayName = undefined;
         if (shift.staffId && !store.get('staff', shift.staffId))
           fail(400, 'Select an existing staff member.');
+        if (shift.staffId && !isActiveWorker(store.get('staff', shift.staffId)!))
+          fail(
+            409,
+            'This worker is inactive. Select an active worker or leave the shift unassigned.',
+          );
         if (shift.status === 'confirmed') assertStaffAvailable(store, shift, shift.staffId);
       } else {
         if (!['requested', 'confirmed'].includes(shift.status))
@@ -543,6 +558,11 @@ export function createApp(options: AppOptions = {}) {
       const body = parsed(workerSchema, req.body);
       const current = method === 'patch' ? store.get('staff', String(req.params.id)) : undefined;
       if (method === 'patch' && !current) fail(404, 'Worker not found.');
+      if (current?.airtableManaged)
+        fail(
+          409,
+          'This worker is synced from Airtable. Update their name or status in Airtable, then refresh workers.',
+        );
       if (
         body.airtableId &&
         store
@@ -557,6 +577,7 @@ export function createApp(options: AppOptions = {}) {
           'An existing Airtable worker link cannot be replaced. Add a separate worker instead.',
         );
       const worker = {
+        ...current,
         ...body,
         id: current?.id ?? id('s'),
         initials: body.name
@@ -1137,6 +1158,15 @@ export function createApp(options: AppOptions = {}) {
     }
   }
   app.post(
+    '/api/integrations/airtable/workers',
+    staff,
+    asyncRoute(async (_req, res) => {
+      if (!configured()) fail(409, 'Configure Airtable before refreshing workers.');
+      await refreshWorkers(true);
+      res.json({ message: 'Workers refreshed from Airtable.' });
+    }),
+  );
+  app.post(
     '/api/integrations/airtable/participants',
     staff,
     asyncRoute(async (_req, res) => {
@@ -1156,5 +1186,12 @@ export function createApp(options: AppOptions = {}) {
     console.error('Portal request failed:', error instanceof Error ? error.name : 'Unknown error');
     res.status(500).json({ error: 'We could not save this change. Please try again.' });
   });
-  return { app, store, drainOutbox, refreshParticipantActivity, close: () => store.close() };
+  return {
+    app,
+    store,
+    drainOutbox,
+    refreshParticipantActivity,
+    refreshWorkers,
+    close: () => store.close(),
+  };
 }

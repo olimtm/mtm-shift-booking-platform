@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Store } from './db.js';
 import type { Shift, ShiftInput, Rsvp, SupportEvent, Participant } from '../shared/types.js';
+import { isActiveWorker } from '../shared/views.js';
 
 export class HttpError extends Error {
   constructor(
@@ -211,7 +212,10 @@ export function upsertRsvp(
 }
 export function assertStaffAvailable(store: Store, shift: Shift, staffId: string | null) {
   if (!staffId) return;
-  if (!store.get('staff', staffId)) fail(400, 'Select an existing staff member.');
+  const worker = store.get('staff', staffId);
+  if (!worker) fail(400, 'Select an existing staff member.');
+  if (!isActiveWorker(worker))
+    fail(409, 'This worker is inactive. Select an active worker or leave the shift unassigned.');
   const conflict = store
     .all('shifts')
     .some(

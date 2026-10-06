@@ -22,6 +22,8 @@ export interface Participant {
   airtableId?: string;
 }
 export interface StaffMember {
+  active?: boolean;
+  airtableManaged?: boolean;
   id: string;
   name: string;
   initials: string;
@@ -84,6 +86,7 @@ export interface IntegrationStatus {
   message: string;
 }
 export interface DashboardData {
+  workerSync?: { checkedAt: string | null; error: string | null; automatic: boolean };
   participantActivity?: { checkedAt: string | null; error: string | null };
   user: User;
   participants: Participant[];
