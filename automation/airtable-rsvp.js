@@ -62,11 +62,28 @@ for (const rsvp of records) {
   if (!start || !end || !(Date.parse(end) > Date.parse(start))) {
     throw new Error('Event requires a valid start and end date/time.');
   }
+  // Match the portal's event validation before sending, with field-specific messages.
+  // Never include participant data, record values or secrets in an error.
+  const title = event.getCellValueAsString(F.title).trim();
+  const location = event.getCellValueAsString(F.location).trim();
+  if (title.length < 2 || title.length > 200) {
+    throw new Error(
+      'Events > Name must contain between 2 and 200 characters. Check the Name field on the linked event, not just its primary display label.',
+    );
+  }
+  if (location.length > 300) {
+    throw new Error('Events > Address must contain at most 300 characters.');
+  }
+  if (Date.parse(end) - Date.parse(start) > 47 * 60 * 60 * 1000) {
+    throw new Error(
+      'Events > Start and End span more than 47 hours. Check both dates as well as times; the portal supports one event of at most 47 hours plus the support buffers.',
+    );
+  }
   const eventDetails = {
-    title: event.getCellValueAsString(F.title),
+    title,
     start: new Date(start).toISOString(),
     end: new Date(end).toISOString(),
-    location: event.getCellValueAsString(F.location),
+    location,
     description: '',
   };
   for (const person of people) {
@@ -82,8 +99,34 @@ for (const rsvp of records) {
       }),
     });
     if (!response.ok) {
-      // Keep response bodies, secret values and participant data out of logs.
-      throw new Error(`Portal webhook returned HTTP ${response.status}; check mappings and retry.`);
+      // Translate only known failures into fixed guidance; never log a response body.
+      let detail = '';
+      try {
+        const body = await response.json();
+        if (typeof body?.error === 'string') {
+          if (body.error.startsWith('event.title:'))
+            detail = 'Check Events > Name: it must contain between 2 and 200 characters.';
+          else if (body.error.startsWith('event.location:'))
+            detail = 'Check Events > Address: it must contain at most 300 characters.';
+          else if (body.error.startsWith('event.start:') || body.error.startsWith('event.end:'))
+            detail = 'Check that Events > Start and End are valid dates and times.';
+          else if (body.error === 'End must be after start, with a duration of at most 47 hours.')
+            detail =
+              'Check Events > Start and End: end must be later and no more than 47 hours after start.';
+          else if (
+            body.error ===
+            'Participant is not linked. Link the Airtable participant record in the portal first.'
+          )
+            detail = 'Import or link this RSVP participant in the portal before testing again.';
+        }
+      } catch {
+        /* A proxy or older server may return a non-JSON error. */
+      }
+      if (!detail && response.status === 401)
+        detail = 'The script secret portalWebhookSecret must match RSVP_WEBHOOK_SECRET in Render.';
+      throw new Error(
+        `Portal webhook returned HTTP ${response.status}. ${detail || 'Confirm portalUrl is the correct hosted portal root address and use the current repository script. No response contents were logged.'}`,
+      );
     }
     delivered += 1;
   }
