@@ -144,9 +144,16 @@ export interface ConnecteamImportReport {
   past: number;
   upcoming: number;
   restoredWorkers: number;
+  assignmentReviews: number;
   earliest: string | null;
   latest: string | null;
-  issues: Array<{ remoteId: string; title: string; reason: string; start?: string }>;
+  issues: Array<{
+    remoteId: string;
+    title: string;
+    reason: string;
+    start?: string;
+    imported?: boolean;
+  }>;
   unmatchedPortal: Array<{ id: string; description: string; start: string }>;
   error?: string;
 }

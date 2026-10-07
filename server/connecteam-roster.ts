@@ -5,6 +5,7 @@ import {
   selectConnecteamScheduler,
   type ConnecteamScheduler,
 } from './connecteam.ts';
+import { zonedIso } from '../shared/dates.ts';
 
 // Covers the scheduler's full practical history and scheduled future, not just upcoming shifts.
 export const ROSTER_FROM = 1;
@@ -29,6 +30,48 @@ export interface ConnecteamRoster {
   shifts: ConnecteamRosterShift[];
 }
 
+/** Job labels help explain excluded event/admin work; labels are never used to assign people. */
+export async function readConnecteamJobNames(
+  schedulerId: number,
+  env: Record<string, string | undefined> = process.env,
+): Promise<Record<string, string>> {
+  const names: Record<string, string> = {};
+  let offset = 0;
+  for (let page = 0; page < 100; page++) {
+    const query = new URLSearchParams({
+      instanceIds: String(schedulerId),
+      includeDeleted: 'true',
+      limit: '500',
+      offset: String(offset),
+    });
+    const body = (await readConnecteamData(`/jobs/v1/jobs?${query}`, env)) as {
+      data?: { jobs?: unknown; paging?: { offset?: unknown } };
+      paging?: { offset?: unknown };
+    };
+    const jobs = body?.data?.jobs;
+    if (!Array.isArray(jobs)) throw new ConnecteamError('Connecteam returned an invalid job list.');
+    function visit(rows: unknown[], depth = 0) {
+      if (depth > 10) throw new ConnecteamError('Connecteam job hierarchy is too deep.');
+      for (const value of rows) {
+        const row = value as { jobId?: unknown; title?: unknown; subJobs?: unknown };
+        if (!row || typeof row.jobId !== 'string' || typeof row.title !== 'string')
+          throw new ConnecteamError('Connecteam returned an invalid job identity.');
+        if (names[row.jobId] != null && names[row.jobId] !== row.title)
+          throw new ConnecteamError('Connecteam job names changed while reading the roster.');
+        names[row.jobId] = row.title;
+        if (Array.isArray(row.subJobs)) visit(row.subJobs, depth + 1);
+      }
+    }
+    visit(jobs);
+    const next = body.data?.paging?.offset ?? body.paging?.offset;
+    if (!jobs.length || (jobs.length < 500 && next == null)) return names;
+    if (!Number.isSafeInteger(next) || Number(next) <= offset)
+      throw new ConnecteamError('Connecteam job pagination did not advance.');
+    offset = Number(next);
+  }
+  throw new ConnecteamError('Connecteam jobs exceeded the import page limit.');
+}
+
 export async function readConnecteamRoster(
   env: Record<string, string | undefined> = process.env,
 ): Promise<ConnecteamRoster> {
@@ -36,7 +79,16 @@ export async function readConnecteamRoster(
   const shifts: ConnecteamRosterShift[] = [];
   const seen = new Map<string, ConnecteamRosterShift>();
   const configuredStart = env.CONNECTEAM_IMPORT_START_DATE;
-  const from = configuredStart ? Date.parse(`${configuredStart}T00:00:00Z`) / 1000 : ROSTER_FROM;
+  let from = ROSTER_FROM;
+  if (configuredStart) {
+    try {
+      from = Date.parse(zonedIso(`${configuredStart}T00:00`, 'Australia/Sydney')) / 1000;
+    } catch {
+      throw new ConnecteamError(
+        'CONNECTEAM_IMPORT_START_DATE must be a valid YYYY-MM-DD date in Sydney.',
+      );
+    }
+  }
   if (
     !Number.isSafeInteger(from) ||
     from < ROSTER_FROM ||

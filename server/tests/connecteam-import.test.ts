@@ -12,6 +12,7 @@ import {
 } from '../connecteam-import.ts';
 import {
   readConnecteamRoster,
+  readConnecteamJobNames,
   ROSTER_FROM,
   ROSTER_THROUGH,
   type ConnecteamRosterShift,
@@ -160,7 +161,7 @@ test('fails closed on repeated pages, malformed records and API failures without
 });
 
 test('date-range limits split the scan into complete adjacent windows without duplicating overnight shifts', async (t) => {
-  const begin = Date.parse('2099-01-01T00:00:00Z') / 1000;
+  const begin = Date.parse('2098-12-31T13:00:00Z') / 1000;
   const boundary = begin + (ROSTER_THROUGH - begin) / 4;
   const shift = { ...apiRow('overnight'), startTime: boundary - 3600, endTime: boundary + 3600 };
   const windows: Array<[number, number]> = [];
@@ -194,6 +195,25 @@ test('date-range limits split the scan into complete adjacent windows without du
   assert.equal(windows[0][0], begin);
   assert.equal(windows.at(-1)![1], ROSTER_THROUGH);
   windows.slice(1).forEach((window, i) => assert.equal(window[0], windows[i][1]));
+});
+
+test('starts the import at Sydney midnight, including early morning shifts on the first day', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    if (!url.includes('/shifts?'))
+      return Response.json({
+        data: { schedulers: [{ schedulerId: 123, name: 'NSW', isArchived: false }] },
+      });
+    assert.equal(
+      new URL(url).searchParams.get('startTime'),
+      String(Date.parse('2026-01-31T13:00:00Z') / 1000),
+    );
+    return Response.json({ data: { shifts: [] } });
+  });
+  await readConnecteamRoster({ ...env, CONNECTEAM_IMPORT_START_DATE: '2026-02-01' });
+  await assert.rejects(
+    readConnecteamRoster({ ...env, CONNECTEAM_IMPORT_START_DATE: '2026-02-30' }),
+    /valid YYYY-MM-DD/,
+  );
 });
 
 test('Connecteam wins matched dates, worker, title, location and status while retaining booking preferences, notes and event identity', () => {
@@ -263,7 +283,7 @@ test('matches exact/overlapping shifts independently of assignment, favours stro
   store.close();
 });
 
-test('keeps unmapped jobs, ambiguous identities, multiple workers and rejected assignments out of the import', () => {
+test('reports unmapped jobs and multiple workers, while retaining rejected assignments as requests needing review', () => {
   const store = new Store(':memory:');
   seed(store);
   const plan = planConnecteamImport(
@@ -278,13 +298,47 @@ test('keeps unmapped jobs, ambiguous identities, multiple workers and rejected a
     'run',
     now,
   );
-  assert.equal(plan.report.created, 1);
+  assert.equal(plan.report.created, 2);
   assert.equal(plan.report.issues.length, 4);
-  assert.equal(plan.changes[0].after.status, 'requested');
-  assert.equal(plan.changes[0].after.staffId, null);
+  assert.equal(plan.report.assignmentReviews, 1);
+  assert.equal(plan.report.issues.filter((issue) => issue.imported).length, 1);
+  assert.equal(
+    plan.changes.find((change) => change.remote?.id === 'rejected')?.after.status,
+    'requested',
+  );
+  assert.equal(plan.changes.find((change) => change.remote?.id === 'draft')?.after.staffId, null);
   const input = snapshot([]);
   input.mappings.participants.recOther = 'job-a';
   assert.throws(() => planConnecteamImport(store, input, 'run'), /Duplicate/);
+  store.close();
+});
+
+test('job lookup reads deleted jobs and sub-jobs for report labels without using names to link participants', async (t) => {
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    assert.equal(init.method, 'GET');
+    assert.equal(new URL(url).searchParams.get('includeDeleted'), 'true');
+    return Response.json({
+      data: {
+        jobs: [
+          {
+            jobId: 'events',
+            title: 'NSW Events',
+            subJobs: [{ jobId: 'admin', title: 'Office admin' }],
+          },
+        ],
+      },
+    });
+  });
+  const labels = await readConnecteamJobNames(123, env);
+  assert.deepEqual(labels, { events: 'NSW Events', admin: 'Office admin' });
+  const store = new Store(':memory:');
+  seed(store);
+  const input = snapshot([remote('r', { jobId: 'events' }), remote('a', { jobId: 'admin' })]);
+  input.jobNames = labels;
+  const plan = planConnecteamImport(store, input, 'run', now);
+  assert.equal(plan.changes.length, 0);
+  assert.match(plan.report.issues[0].reason, /event\/group/);
+  assert.match(plan.report.issues[1].reason, /admin\/training/);
   store.close();
 });
 

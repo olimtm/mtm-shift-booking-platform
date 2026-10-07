@@ -17,11 +17,13 @@ import {
 import { ConnecteamError } from './connecteam.ts';
 import {
   readConnecteamRoster,
+  readConnecteamJobNames,
   type ConnecteamRoster,
   type ConnecteamRosterShift,
 } from './connecteam-roster.ts';
 
 export interface ImportSnapshot {
+  jobNames?: Record<string, string>;
   roster: ConnecteamRoster;
   mappings: ConnecteamMappings;
   workers: AirtableStaffSnapshot;
@@ -85,6 +87,7 @@ export function planConnecteamImport(
     past: 0,
     upcoming: 0,
     restoredWorkers: 0,
+    assignmentReviews: 0,
     earliest: null,
     latest: null,
     issues: [],
@@ -124,7 +127,8 @@ export function planConnecteamImport(
   const issues = (remote: ConnecteamRosterShift, reason: string) =>
     report.issues.push({
       remoteId: remote.id,
-      title: remote.title,
+      title:
+        remote.title || (remote.jobId ? snapshot.jobNames?.[remote.jobId] : undefined) || remote.id,
       start: new Date(remote.startTime * 1000).toISOString(),
       reason,
     });
@@ -155,11 +159,17 @@ export function planConnecteamImport(
       (p) => p.airtableId === participantAirtableId && participantAirtableId,
     );
     if (matchingPeople.length !== 1) {
+      const jobName = remote.jobId ? snapshot.jobNames?.[remote.jobId] || '' : '';
+      const reason = /\bevents?\b|\bgroup\b/i.test(jobName)
+        ? 'Unlinked event/group job; no individual participant identified.'
+        : /\badmin\b|\btraining\b|\bmeeting\b|\boffice\b|\bleave\b/i.test(jobName)
+          ? 'Unlinked admin/training/office job; no individual participant identified.'
+          : !remote.jobId
+            ? 'No participant job ID on the Connecteam shift.'
+            : 'Job is not linked to an Airtable participant (may be an event, admin or other job).';
       issues(
         remote,
-        participantAirtableId
-          ? 'Participant is not uniquely linked in the portal.'
-          : 'Job is not linked to an Airtable participant (may be an event, admin or other job).',
+        participantAirtableId ? 'Participant is not uniquely linked in the portal.' : reason,
       );
       continue;
     }
@@ -170,13 +180,6 @@ export function planConnecteamImport(
     }
     if (remote.title.length > 3000 || remote.location.length > LOCATION_MAX_LENGTH) {
       issues(remote, 'Title or location exceeds the portal field limit.');
-      continue;
-    }
-    if (remote.rejectedUserIds.some((user) => remote.assignedUserIds.includes(user))) {
-      issues(
-        remote,
-        'Assigned worker has rejected or unclaimed this shift; review the assignment in Connecteam.',
-      );
       continue;
     }
     let worker: StaffMember | null = null;
@@ -289,6 +292,20 @@ export function planConnecteamImport(
       continue;
     }
     const before = row.options[0];
+    const assignmentReview = row.remote.rejectedUserIds.some((user) =>
+      row.remote.assignedUserIds.includes(user),
+    );
+    if (assignmentReview) {
+      report.assignmentReviews++;
+      report.issues.push({
+        remoteId: row.remote.id,
+        title: row.remote.title,
+        start: new Date(row.remote.startTime * 1000).toISOString(),
+        imported: true,
+        reason:
+          'Imported as requested: the worker rejected or unclaimed the Connecteam assignment. Review before confirming.',
+      });
+    }
     const title = row.remote.title || before?.description || '1:1 support';
     const after = {
       ...(before ||
@@ -313,7 +330,10 @@ export function planConnecteamImport(
       location: row.remote.location,
       staffId: row.worker?.id || null,
       staffDisplayName: undefined,
-      status: row.remote.isPublished ? ('confirmed' as const) : ('requested' as const),
+      status:
+        row.remote.isPublished && !assignmentReview
+          ? ('confirmed' as const)
+          : ('requested' as const),
       pendingChange: null,
       syncStatus: 'imported' as const,
       updatedAt: new Date(
@@ -383,7 +403,8 @@ async function readSnapshot(): Promise<ImportSnapshot> {
   const roster = await readConnecteamRoster();
   const mappings = await readAirtableConnecteamMappings();
   const workers = await readAirtableStaff();
-  return { roster, mappings, workers };
+  const jobNames = await readConnecteamJobNames(roster.scheduler.schedulerId);
+  return { roster, mappings, workers, jobNames };
 }
 
 export function createConnecteamImport(

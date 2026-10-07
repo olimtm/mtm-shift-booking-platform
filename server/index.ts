@@ -55,7 +55,7 @@ async function startBackgroundWork() {
           'Connecteam one-off import:',
           JSON.stringify({
             ...summary,
-            omitted: issues.length,
+            omitted: issues.filter((issue) => !issue.imported).length,
             unmatchedPortal: unmatchedPortal.length,
             reasons,
           }),

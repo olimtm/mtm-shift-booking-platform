@@ -21,7 +21,7 @@ export async function readConnecteamData(
   path: string,
   env: Record<string, string | undefined> = process.env,
 ): Promise<unknown> {
-  if (!path.startsWith('/scheduler/v1/schedulers'))
+  if (!path.startsWith('/scheduler/v1/schedulers') && !path.startsWith('/jobs/v1/jobs?'))
     throw new ConnecteamError('Unsupported Connecteam read endpoint.');
   const key = env.CONNECTEAM_API_KEY?.trim();
   if (!key || /^["']|["']$/.test(key))

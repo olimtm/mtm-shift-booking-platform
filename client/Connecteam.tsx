@@ -130,8 +130,10 @@ export default function Connecteam({
             {status.importReport.past} past shifts · {status.importReport.upcoming} upcoming shifts
           </p>
           <p className="field-hint">
-            {status.importReport.issues.length} Connecteam shifts need review or belong to other
-            jobs. {status.importReport.unmatchedPortal.length} unmatched portal requests preserved.
+            {status.importReport.issues.filter((issue) => !issue.imported).length} Connecteam shifts
+            excluded because they need links or belong to other jobs.{' '}
+            {status.importReport.assignmentReviews || 0} imported assignments need review.{' '}
+            {status.importReport.unmatchedPortal.length} unmatched portal requests preserved.
           </p>
           {(status.importReport.issues.length > 0 ||
             status.importReport.unmatchedPortal.length > 0) && (

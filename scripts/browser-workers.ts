@@ -114,6 +114,15 @@ globalThis.fetch = async (resource, init) => {
     assert.equal(init?.method, 'GET');
     await connecteamGate;
     if (connecteamDenied) return new Response('private Connecteam response', { status: 401 });
+    if (url.pathname === '/jobs/v1/jobs')
+      return Response.json({
+        data: {
+          jobs: [
+            { jobId: 'private-job-id', title: 'Fictional participant' },
+            { jobId: 'other-job', title: 'Office admin' },
+          ],
+        },
+      });
     if (url.pathname.endsWith('/shifts'))
       return Response.json({
         data: {
