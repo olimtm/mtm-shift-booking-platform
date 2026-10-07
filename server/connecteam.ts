@@ -6,7 +6,15 @@ export interface ConnecteamScheduler {
   isArchived: boolean;
   timezone?: string;
 }
-export class ConnecteamError extends Error {}
+export class ConnecteamError extends Error {
+  constructor(
+    message: string,
+    public status?: number,
+    public dateRangeRejected = false,
+  ) {
+    super(message);
+  }
+}
 
 /** Fixed-origin GET requests only. Importing must never change the remote roster. */
 export async function readConnecteamData(
@@ -34,13 +42,29 @@ export async function readConnecteamData(
     );
   }
   if (!response.ok) {
-    await response.body?.cancel();
+    let dateRangeRejected = false;
+    let constraint = '';
+    if (response.status === 400 || response.status === 422) {
+      // Extract only a category and numeric time limits, never raw API text or record data.
+      const diagnostic = (await response.text()).slice(0, 8000);
+      dateRangeRejected = /date|time|range|period|timestamp/i.test(diagnostic);
+      const limits = [
+        ...diagnostic.matchAll(/\b(\d{1,4})\s*(days?|months?|years?|weeks?|hours?)\b/gi),
+      ]
+        .slice(0, 3)
+        .map((match) => `${match[1]} ${match[2].toLowerCase()}`);
+      constraint = dateRangeRejected
+        ? ` Date/time range rejected${limits.length ? `; reported limit: ${limits.join(', ')}` : ''}.`
+        : '';
+    } else await response.body?.cancel();
     throw new ConnecteamError(
       response.status === 401
         ? 'Connecteam rejected the API key (HTTP 401). No shifts were changed.'
         : response.status === 403
           ? 'Connecteam denied scheduler access (HTTP 403). Check API access for the Operations hub. No shifts were changed.'
-          : `Connecteam returned HTTP ${response.status}. Retry the read-only check later. No shifts were changed.`,
+          : `Connecteam returned HTTP ${response.status}.${constraint} No shifts were changed.`,
+      response.status,
+      dateRangeRejected,
     );
   }
   let body: unknown;

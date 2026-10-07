@@ -7,7 +7,7 @@ import {
 } from './connecteam.ts';
 
 // Covers the scheduler's full practical history and scheduled future, not just upcoming shifts.
-export const ROSTER_FROM = 0;
+export const ROSTER_FROM = 1;
 export const ROSTER_THROUGH = 4102444800; // 1 January 2100 UTC
 export interface ConnecteamRosterShift {
   id: string;
@@ -34,21 +34,49 @@ export async function readConnecteamRoster(
 ): Promise<ConnecteamRoster> {
   const scheduler = selectConnecteamScheduler(await readConnecteamSchedulers(env), env);
   const shifts: ConnecteamRosterShift[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, ConnecteamRosterShift>();
+  const configuredStart = env.CONNECTEAM_IMPORT_START_DATE;
+  const from = configuredStart ? Date.parse(`${configuredStart}T00:00:00Z`) / 1000 : ROSTER_FROM;
+  if (
+    !Number.isSafeInteger(from) ||
+    from < ROSTER_FROM ||
+    from >= ROSTER_THROUGH ||
+    (configuredStart && !/^\d{4}-\d{2}-\d{2}$/.test(configuredStart))
+  )
+    throw new ConnecteamError('CONNECTEAM_IMPORT_START_DATE must be a valid YYYY-MM-DD date.');
+  let windowFrom = from;
+  let windowSize = ROSTER_THROUGH - from;
   let offset = 0;
-  for (let page = 0; page < 1000; page++) {
+  let windows = 0;
+  const seenInWindow = new Set<string>();
+  for (let page = 0; page < 2000; page++) {
+    const windowThrough = Math.min(ROSTER_THROUGH, windowFrom + windowSize);
     const params = new URLSearchParams({
-      startTime: String(ROSTER_FROM),
-      endTime: String(ROSTER_THROUGH),
+      startTime: String(windowFrom),
+      endTime: String(windowThrough),
       limit: '500',
       offset: String(offset),
       sort: 'created_at',
       order: 'asc',
     });
-    const body = (await readConnecteamData(
-      `/scheduler/v1/schedulers/${scheduler.schedulerId}/shifts?${params}`,
-      env,
-    )) as { data?: { shifts?: unknown }; paging?: { offset?: unknown } };
+    let body: { data?: { shifts?: unknown }; paging?: { offset?: unknown } };
+    try {
+      body = (await readConnecteamData(
+        `/scheduler/v1/schedulers/${scheduler.schedulerId}/shifts?${params}`,
+        env,
+      )) as typeof body;
+    } catch (error) {
+      if (
+        offset === 0 &&
+        error instanceof ConnecteamError &&
+        error.dateRangeRejected &&
+        windowSize > 86400
+      ) {
+        windowSize = Math.floor(windowSize / 2);
+        continue;
+      }
+      throw error;
+    }
     const rows = body?.data?.shifts;
     if (!Array.isArray(rows) || rows.length > 500)
       throw new ConnecteamError(
@@ -60,7 +88,7 @@ export async function readConnecteamRoster(
         typeof row.id !== 'string' ||
         !row.id ||
         row.id.length > 200 ||
-        seen.has(row.id) ||
+        seenInWindow.has(row.id) ||
         !(row.title == null || typeof row.title === 'string') ||
         !(row.jobId == null || typeof row.jobId === 'string') ||
         !Number.isSafeInteger(row.startTime) ||
@@ -77,7 +105,7 @@ export async function readConnecteamRoster(
         throw new ConnecteamError(
           'Connecteam returned an invalid or repeated shift. No shifts were imported.',
         );
-      seen.add(row.id);
+      seenInWindow.add(row.id);
       const address = row.locationData?.gps?.address;
       if (address != null && typeof address !== 'string')
         throw new ConnecteamError(
@@ -101,7 +129,7 @@ export async function readConnecteamRoster(
         if (!latest.has(status.assignedUserId) || latest.get(status.assignedUserId)!.time <= time)
           latest.set(status.assignedUserId, { time, status: status.status });
       }
-      shifts.push({
+      const parsed: ConnecteamRosterShift = {
         id: row.id,
         title: row.title?.trim() || '',
         jobId: row.jobId?.trim() || null,
@@ -114,17 +142,39 @@ export async function readConnecteamRoster(
         rejectedUserIds: [...latest]
           .filter(([, v]) => v.status === 'rejected' || v.status === 'unclaimed')
           .map(([user]) => user),
-      });
+      };
+      // The same overnight shift can overlap adjacent windows. It must remain identical.
+      if (seen.has(parsed.id)) {
+        if (JSON.stringify(seen.get(parsed.id)) !== JSON.stringify(parsed))
+          throw new ConnecteamError(
+            'The Connecteam roster changed during the scan. Retry before importing.',
+          );
+      } else {
+        shifts.push(parsed);
+        seen.set(parsed.id, parsed);
+      }
     }
     const next = body.paging?.offset;
-    if (!rows.length || (rows.length < 500 && next == null))
-      return {
-        scheduler,
-        checkedAt: new Date().toISOString(),
-        from: ROSTER_FROM,
-        through: ROSTER_THROUGH,
-        shifts,
-      };
+    if (!rows.length || (rows.length < 500 && next == null)) {
+      windows++;
+      if (windowThrough === ROSTER_THROUGH)
+        return {
+          scheduler,
+          checkedAt: new Date().toISOString(),
+          from,
+          through: ROSTER_THROUGH,
+          shifts,
+        };
+      windowFrom = windowThrough;
+      offset = 0;
+      seenInWindow.clear();
+      if (windows % 10 === 0)
+        console.log(
+          `Connecteam roster scan: ${windows} date windows checked; ${shifts.length} shifts read.`,
+        );
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      continue;
+    }
     if (!Number.isSafeInteger(next) || Number(next) <= offset)
       throw new ConnecteamError(
         'Connecteam roster pagination did not advance. No shifts were imported.',

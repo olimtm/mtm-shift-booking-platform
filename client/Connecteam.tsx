@@ -69,7 +69,7 @@ export default function Connecteam({
             </div>
             <div>
               <strong>{report.existingShiftLinks}</strong>
-              <span>Existing shift links</span>
+              <span>Airtable shift IDs</span>
             </div>
             <div>
               <strong>{report.scheduler.name}</strong>

@@ -159,6 +159,43 @@ test('fails closed on repeated pages, malformed records and API failures without
   );
 });
 
+test('date-range limits split the scan into complete adjacent windows without duplicating overnight shifts', async (t) => {
+  const begin = Date.parse('2099-01-01T00:00:00Z') / 1000;
+  const boundary = begin + (ROSTER_THROUGH - begin) / 4;
+  const shift = { ...apiRow('overnight'), startTime: boundary - 3600, endTime: boundary + 3600 };
+  const windows: Array<[number, number]> = [];
+  const timeout = globalThis.setTimeout;
+  t.mock.method(globalThis, 'setTimeout', ((
+    callback: (...args: unknown[]) => void,
+    _ms: number,
+    ...args: unknown[]
+  ) => timeout(callback, 0, ...args)) as typeof setTimeout);
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    if (!url.includes('/shifts?'))
+      return Response.json({
+        data: { schedulers: [{ schedulerId: 123, name: 'NSW', isArchived: false }] },
+      });
+    const query = new URL(url).searchParams;
+    const from = Number(query.get('startTime')),
+      through = Number(query.get('endTime'));
+    if (through - from > 180 * 86400)
+      return Response.json(
+        { detail: 'Maximum date range is 180 days. PRIVATE MESSAGE fictional-private-key' },
+        { status: 400 },
+      );
+    windows.push([from, through]);
+    return Response.json({
+      data: { shifts: shift.startTime < through && shift.endTime > from ? [shift] : [] },
+    });
+  });
+  const result = await readConnecteamRoster({ ...env, CONNECTEAM_IMPORT_START_DATE: '2099-01-01' });
+  assert.equal(result.shifts.length, 1);
+  assert.equal(windows.length, 4);
+  assert.equal(windows[0][0], begin);
+  assert.equal(windows.at(-1)![1], ROSTER_THROUGH);
+  windows.slice(1).forEach((window, i) => assert.equal(window[0], windows[i][1]));
+});
+
 test('Connecteam wins matched dates, worker, title, location and status while retaining booking preferences, notes and event identity', () => {
   const store = new Store(':memory:');
   seed(store);
