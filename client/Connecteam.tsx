@@ -1,20 +1,22 @@
 import { useState } from 'react';
-import { Link2, RefreshCw } from 'lucide-react';
-import type { DashboardData } from '../shared/types';
+import { CheckCircle2, Link2, RefreshCw } from 'lucide-react';
+import type { ConnecteamSetupStatus, DashboardData } from '../shared/types';
 import { post } from './api';
 import { ErrorNotice, Spinner } from './ui';
 
 export default function Connecteam({
   data,
-  onSaved,
+  onChecked,
 }: {
   data: DashboardData;
-  onSaved: () => Promise<unknown>;
+  onChecked: (status: ConnecteamSetupStatus) => void;
 }) {
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
+    [error, setError] = useState(''),
+    [checked, setChecked] = useState(false);
   const status = data.connecteam,
-    report = status?.report;
+    report = status?.report,
+    failure = error || status?.error;
   return (
     <section className="integration-card connecteam-card">
       <div className="integration-card-heading">
@@ -32,6 +34,28 @@ export default function Connecteam({
           ? 'Check access to NSW and the staff, participant and shift links already in Airtable. This check does not create or publish shifts.'
           : 'Add the Connecteam API key privately in the portal’s Render environment to check the connection.'}
       </p>
+      <div role="status" aria-live="polite" aria-atomic="true">
+        {busy ? (
+          <p className="info-notice connecteam-result">
+            <Spinner />
+            Checking Connecteam and Airtable links…
+          </p>
+        ) : report && !failure ? (
+          <div className="info-notice connecteam-result">
+            <CheckCircle2 size={19} aria-hidden="true" />
+            <div>
+              <strong>{checked ? 'Connection check complete.' : 'Connection verified.'}</strong>
+              <p>
+                Connected to {report.scheduler.name}.{' '}
+                {report.issues.length
+                  ? 'Some Airtable links need attention below.'
+                  : 'No mapping issues found.'}{' '}
+                Shift publishing is still off.
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </div>
       {report && (
         <>
           <div className="integration-stats">
@@ -59,17 +83,19 @@ export default function Connecteam({
           {report.issues.length > 0 && <ErrorNotice>{report.issues.join(' ')}</ErrorNotice>}
         </>
       )}
-      {(error || status?.error) && <ErrorNotice>{error || status?.error}</ErrorNotice>}
+      {!busy && failure && <ErrorNotice>{failure}</ErrorNotice>}
       <div className="inline-actions">
         <button
           className="primary-button"
           disabled={busy || !status?.configured || data.demoMode}
+          aria-busy={busy}
           onClick={async () => {
             setBusy(true);
             setError('');
             try {
-              await post('/integrations/connecteam/check', {});
-              await onSaved();
+              const next = await post<ConnecteamSetupStatus>('/integrations/connecteam/check', {});
+              onChecked(next);
+              setChecked(true);
             } catch (error) {
               setError((error as Error).message);
             } finally {
@@ -77,7 +103,8 @@ export default function Connecteam({
             }
           }}
         >
-          {busy ? <Spinner /> : <RefreshCw size={16} />}Check Connecteam connection
+          {busy ? <Spinner /> : <RefreshCw size={16} />}
+          {busy ? 'Checking connection…' : 'Check Connecteam connection'}
         </button>
       </div>
       <p className="field-hint">

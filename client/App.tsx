@@ -1042,7 +1042,14 @@ export default function App() {
             </>
           )}
           {page === 'updates' && <ShiftUpdatesPage data={data} onSaved={refresh} />}
-          {page === 'connecteam' && staff && <Connecteam data={data} onSaved={refresh} />}
+          {page === 'connecteam' && staff && (
+            <Connecteam
+              data={data}
+              onChecked={(connecteam) =>
+                setData((current) => (current ? { ...current, connecteam } : current))
+              }
+            />
+          )}
           {page === 'workers' && staff && <Workers data={data} onSaved={refresh} />}
           {page === 'accounts' && staff && <Accounts data={data} />}
           {page === 'integration' && staff && (

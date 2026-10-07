@@ -32,6 +32,12 @@
 .connecteam-card > .field-hint {
   margin-top: 18px;
 }
+.connecteam-result {
+  margin: 16px 0;
+}
+.connecteam-result p {
+  margin: 4px 0 0;
+}
 .worker-history-panel {
   align-items: flex-start;
   flex-wrap: wrap;

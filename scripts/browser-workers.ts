@@ -104,10 +104,15 @@ const historyRecords = [1, 2, 3].map((n) => ({
 }));
 const originalFetch = globalThis.fetch;
 let fail = false;
+let connecteamDenied = false;
+let duplicateConnecteamIds = false;
+let connecteamGate: Promise<void> | undefined;
 globalThis.fetch = async (resource, init) => {
   const url = new URL(String(resource));
   if (url.hostname === 'api.connecteam.com') {
     assert.equal(init?.method, 'GET');
+    await connecteamGate;
+    if (connecteamDenied) return new Response('private Connecteam response', { status: 401 });
     return Response.json({
       data: {
         schedulers: [
@@ -122,7 +127,10 @@ globalThis.fetch = async (resource, init) => {
   const selected = url.searchParams.getAll('fields[]');
   if (selected.length === 1 && selected[0] === 'Connecteam ID')
     return Response.json({
-      records: records.map((r, i) => ({ id: r.id, fields: { 'Connecteam ID': i + 1 } })),
+      records: records.map((r, i) => ({
+        id: r.id,
+        fields: { 'Connecteam ID': duplicateConnecteamIds ? 1 : i + 1 },
+      })),
     });
   if (url.pathname.includes('tblPeople'))
     return Response.json({
@@ -150,6 +158,8 @@ runtime.store.put('participants', {
 });
 await runtime.refreshWorkers();
 await runtime.refreshWorkHistory();
+// Production runs this on startup, so clicking Check often returns unchanged counts.
+await runtime.connecteam.check();
 const worker = runtime.store.all('staff').find((w) => w.airtableId === records[0].id)!;
 const volunteer = runtime.store.all('staff').find((w) => w.airtableId === records[1].id)!;
 const start = Date.now() + 10 * 86400000;
@@ -264,7 +274,43 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'Connecteam', exact: true }).click();
   await expect(page.getByRole('button', { name: 'New shift request', exact: true })).toHaveCount(0);
+  const result = page.getByRole('status').filter({ hasText: /Connection|Checking/ });
+  await expect(result).toContainText('Connection verified.');
+  // Both the first manual check and an unchanged repeat must visibly finish.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let release!: () => void;
+    connecteamGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.getByRole('button', { name: 'Check Connecteam connection', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Checking connection…', exact: true }),
+    ).toBeDisabled();
+    await expect(result).toContainText('Checking Connecteam and Airtable links…');
+    await expect(result).not.toContainText('Connection check complete.');
+    release();
+    connecteamGate = undefined;
+    await expect(result).toContainText('Connection check complete.');
+    await expect(result).toContainText('Connected to NSW. No mapping issues found.');
+    await expect(result).toContainText('Shift publishing is still off.');
+  }
+  // A failure must remove the previous success, retain the last report and allow retry.
+  connecteamDenied = true;
   await page.getByRole('button', { name: 'Check Connecteam connection', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Connecteam rejected the API key');
+  await expect(result).toHaveCount(0);
+  await expect(page.getByText('Scheduler 999', { exact: true })).toBeVisible();
+  await expect(page.getByText('private Connecteam response')).toHaveCount(0);
+  connecteamDenied = false;
+  duplicateConnecteamIds = true;
+  await page.getByRole('button', { name: 'Check Connecteam connection', exact: true }).click();
+  await expect(result).toContainText('Some Airtable links need attention below.');
+  await expect(result).not.toContainText('No mapping issues found.');
+  await expect(page.getByRole('alert')).toContainText('share the same Connecteam ID');
+  duplicateConnecteamIds = false;
+  await page.getByRole('button', { name: 'Check Connecteam connection', exact: true }).click();
+  await expect(result).toContainText('No mapping issues found.');
+  await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.getByText('Scheduler 999', { exact: true })).toBeVisible();
   await expect(page.getByText('Publishing off', { exact: true })).toBeVisible();
   await expect(page.getByText('private-job-id', { exact: true })).toHaveCount(0);
@@ -278,7 +324,7 @@ try {
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   assert.deepEqual(errors, []);
   console.log(
-    'Worker browser checks passed: active staff/volunteers/payroll-pending staff, delivered history counts and sorting, refresh, rename, inactivity, preserved bookings, reassignment, error recovery and mobile layout.',
+    'Worker browser checks passed: active staff/volunteers/payroll-pending staff, history counts and sorting, refresh, inactivity, preserved bookings, reassignment, Connecteam repeated-check feedback, failure recovery, mapping warnings and mobile layout.',
   );
 } finally {
   await browser.close();
