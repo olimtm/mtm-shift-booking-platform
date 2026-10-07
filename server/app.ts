@@ -25,6 +25,7 @@ import { installAccountRoutes, setupRequired } from './accounts.js';
 import { seedDemo } from './seed.js';
 import { createWorkerSync } from './worker-sync.js';
 import { createConnecteamSetup } from './connecteam-setup.ts';
+import { createConnecteamImport } from './connecteam-import.ts';
 import { createWorkHistorySync, savedWorkHistory, workTogetherCounts } from './worker-history.ts';
 import { isActiveWorker } from '../shared/views.js';
 import {
@@ -127,11 +128,11 @@ export function createApp(options: AppOptions = {}) {
           'http://127.0.0.1:3001',
         ],
   );
-  const store = new Store(
+  const databasePath =
     options.databasePath ??
-      process.env.DATABASE_PATH ??
-      (demoMode ? '.local/demo.sqlite' : '.local/support.sqlite'),
-  );
+    process.env.DATABASE_PATH ??
+    (demoMode ? '.local/demo.sqlite' : '.local/support.sqlite');
+  const store = new Store(databasePath);
   if (!demoMode && store.meta('demoDatabase')) {
     store.close();
     throw new Error(
@@ -175,7 +176,19 @@ export function createApp(options: AppOptions = {}) {
   const refreshWorkers = createWorkerSync(store, configured);
   const refreshWorkHistory = createWorkHistorySync(store, configured);
   const connecteam = createConnecteamSetup(store, () => !demoMode);
+  const connecteamImport = createConnecteamImport(store, {
+    databasePath,
+    enabled: () => !demoMode && connecteam.configured(),
+  });
   app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+    if (
+      connecteamImport.isRunning() &&
+      !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
+      !['/auth/login', '/auth/logout'].includes(req.path)
+    )
+      return res.status(503).json({
+        error: 'The one-off Connecteam import is running. Please retry this change shortly.',
+      });
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.path !== '/webhooks/rsvp') {
       if (!req.headers.origin || !allowedOrigins.has(req.headers.origin))
         return res.status(403).json({ error: 'This request must come from the support portal.' });
@@ -818,6 +831,12 @@ export function createApp(options: AppOptions = {}) {
   let syncRunning = false;
   let lastAirtableWrite = 0;
   async function drainOutbox() {
+    if (connecteamImport.isRunning())
+      return {
+        synced: 0,
+        failed: 0,
+        message: 'Airtable sync is paused during the one-off Connecteam import.',
+      };
     if (syncRunning) return { synced: 0, failed: 0, message: 'A sync is already running.' };
     if (!configured() || !enableSync)
       return { synced: 0, failed: 0, message: integrationStatus().message };
@@ -1244,6 +1263,7 @@ export function createApp(options: AppOptions = {}) {
     refreshWorkers,
     refreshWorkHistory,
     connecteam,
+    connecteamImport,
     close: () => store.close(),
   };
 }

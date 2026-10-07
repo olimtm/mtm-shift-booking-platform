@@ -527,6 +527,7 @@ export function ShiftDetail({
                 pending: 'Saved in portal · Airtable sync pending',
                 synced: 'Synced to Airtable',
                 failed: 'Saved in portal · Airtable sync needs attention',
+                imported: 'Imported from Connecteam · Saved in portal only',
               }[shift.syncStatus]
             }
           </div>

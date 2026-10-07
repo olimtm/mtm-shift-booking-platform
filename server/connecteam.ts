@@ -8,10 +8,13 @@ export interface ConnecteamScheduler {
 }
 export class ConnecteamError extends Error {}
 
-/** A read-only connection check. There are deliberately no publication calls here. */
-export async function readConnecteamSchedulers(
+/** Fixed-origin GET requests only. Importing must never change the remote roster. */
+export async function readConnecteamData(
+  path: string,
   env: Record<string, string | undefined> = process.env,
-): Promise<ConnecteamScheduler[]> {
+): Promise<unknown> {
+  if (!path.startsWith('/scheduler/v1/schedulers'))
+    throw new ConnecteamError('Unsupported Connecteam read endpoint.');
   const key = env.CONNECTEAM_API_KEY?.trim();
   if (!key || /^["']|["']$/.test(key))
     throw new ConnecteamError(
@@ -19,7 +22,7 @@ export async function readConnecteamSchedulers(
     );
   let response: Response;
   try {
-    response = await fetch('https://api.connecteam.com/scheduler/v1/schedulers', {
+    response = await fetch(`https://api.connecteam.com${path}`, {
       method: 'GET',
       headers: { 'X-API-KEY': key, Accept: 'application/json' },
       signal: AbortSignal.timeout(15_000),
@@ -44,8 +47,15 @@ export async function readConnecteamSchedulers(
   try {
     body = await response.json();
   } catch {
-    throw new ConnecteamError('Connecteam returned an invalid scheduler response.');
+    throw new ConnecteamError('Connecteam returned an invalid JSON response.');
   }
+  return body;
+}
+
+export async function readConnecteamSchedulers(
+  env: Record<string, string | undefined> = process.env,
+): Promise<ConnecteamScheduler[]> {
+  const body = await readConnecteamData('/scheduler/v1/schedulers', env);
   const rows = (body as { data?: { schedulers?: unknown } })?.data?.schedulers;
   if (
     !Array.isArray(rows) ||

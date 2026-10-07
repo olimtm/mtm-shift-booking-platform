@@ -20,6 +20,8 @@ export function createConnecteamSetup(store: Store, enabled: () => boolean) {
     publishingEnabled: false,
     report: JSON.parse(store.meta('connecteam_setup_report') || 'null'),
     error: store.meta('connecteam_setup_error') || null,
+    importReport: JSON.parse(store.meta('connecteam_import_report') || 'null'),
+    importError: store.meta('connecteam_import_error') || null,
   });
   async function check(): Promise<ConnecteamSetupStatus> {
     if (!configured())

@@ -34,6 +34,12 @@ export class Store {
       CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires);
       CREATE TABLE IF NOT EXISTS account_links (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,kind TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS account_links_user ON account_links(user_id);
+      CREATE TABLE IF NOT EXISTS connecteam_shift_links (
+        scheduler_id INTEGER NOT NULL, remote_id TEXT NOT NULL,
+        shift_id TEXT NOT NULL UNIQUE REFERENCES shifts(id),
+        source_json TEXT NOT NULL, imported_at TEXT NOT NULL,
+        PRIMARY KEY(scheduler_id,remote_id)
+      );
     `);
     const columns = this.db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
     if (!columns.some((column) => column.name === 'disabled'))

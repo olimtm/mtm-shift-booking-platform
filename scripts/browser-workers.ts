@@ -6,6 +6,7 @@ import express from 'express';
 import { createApp } from '../server/app.ts';
 import { seedDemo } from '../server/seed.ts';
 import { newShift } from '../server/domain.ts';
+import { createConnecteamImport } from '../server/connecteam-import.ts';
 
 // Isolated fictional data and a mocked read-only Airtable server. Never load .env.
 for (const key of Object.keys(process.env))
@@ -113,6 +114,33 @@ globalThis.fetch = async (resource, init) => {
     assert.equal(init?.method, 'GET');
     await connecteamGate;
     if (connecteamDenied) return new Response('private Connecteam response', { status: 401 });
+    if (url.pathname.endsWith('/shifts'))
+      return Response.json({
+        data: {
+          shifts: [
+            {
+              id: 'history-import',
+              jobId: 'private-job-id',
+              title: 'Imported historical support',
+              startTime: Math.floor(Date.now() / 1000) - 20 * 86400,
+              endTime: Math.floor(Date.now() / 1000) - 20 * 86400 + 3600,
+              assignedUserIds: [1],
+              isPublished: true,
+              isOpenShift: false,
+            },
+            {
+              id: 'unmapped-job',
+              jobId: 'other-job',
+              title: 'Unmapped admin shift',
+              startTime: Math.floor(Date.now() / 1000) - 20 * 86400,
+              endTime: Math.floor(Date.now() / 1000) - 20 * 86400 + 3600,
+              assignedUserIds: [1],
+              isPublished: true,
+              isOpenShift: false,
+            },
+          ],
+        },
+      });
     return Response.json({
       data: {
         schedulers: [
@@ -315,6 +343,26 @@ try {
   await expect(page.getByText('Publishing off', { exact: true })).toBeVisible();
   await expect(page.getByText('private-job-id', { exact: true })).toHaveCount(0);
   assert.equal(runtime.connecteam.status().report?.mappedWorkers, 4);
+  // Exercise the real import and report with fictional data. Durable backups have separate tests.
+  const importer = createConnecteamImport(runtime.store, {
+    databasePath: artifacts + '/fictional.sqlite',
+    enabled: () => true,
+    backup: async () => {},
+  });
+  await importer.run('preview', 'browser-once');
+  await page.getByRole('button', { name: 'Check Connecteam connection', exact: true }).click();
+  await expect(page.getByText('Import preview ready.', { exact: false })).toBeVisible();
+  await importer.run('apply', 'browser-once');
+  await page.getByRole('button', { name: 'Check Connecteam connection', exact: true }).click();
+  await expect(page.getByText('Import completed.', { exact: false })).toBeVisible();
+  await expect(
+    page.getByText('1 added · 0 updated · 0 already matched · 0 cancelled'),
+  ).toBeVisible();
+  await page.getByText('View import exceptions', { exact: true }).click();
+  await expect(page.getByText('Unmapped admin shift', { exact: true })).toBeVisible();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download full import report', exact: true }).click();
+  assert.equal((await downloadPromise).suggestedFilename(), 'connecteam-import-report.json');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
     path: artifacts + '/connecteam-mobile.png',
@@ -322,6 +370,16 @@ try {
     animations: 'disabled',
   });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.reload();
+  await nav(/^Requests/);
+  await page.getByRole('tab', { name: 'Past / completed' }).click();
+  await page.getByLabel('Search requests').fill('Imported historical support');
+  await expect(
+    page.locator('.shift-list-row').filter({ hasText: 'Imported historical support' }),
+  ).toHaveCount(1);
+  await page.locator('.shift-list-row').filter({ hasText: 'Imported historical support' }).click();
+  await expect(page.getByText('Imported from Connecteam · Saved in portal only')).toBeVisible();
   assert.deepEqual(errors, []);
   console.log(
     'Worker browser checks passed: active staff/volunteers/payroll-pending staff, history counts and sorting, refresh, inactivity, preserved bookings, reassignment, Connecteam repeated-check feedback, failure recovery, mapping warnings and mobile layout.',

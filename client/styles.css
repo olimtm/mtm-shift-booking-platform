@@ -38,6 +38,16 @@
 .connecteam-result p {
   margin: 4px 0 0;
 }
+.connecteam-import-report {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.connecteam-import-report p,
+.connecteam-import-report li {
+  margin: 12px 0;
+}
 .worker-history-panel {
   align-items: flex-start;
   flex-wrap: wrap;

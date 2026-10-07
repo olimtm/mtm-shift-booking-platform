@@ -3,7 +3,7 @@ export type SupportType = 'general' | 'events' | 'both' | 'none';
 export type ShiftStatus = 'requested' | 'confirmed' | 'declined' | 'cancelled';
 export type DrivingPreference = 'required' | 'not_required' | 'no_preference';
 export type GenderPreference = 'female' | 'male' | 'no_preference';
-export type SyncStatus = 'not_configured' | 'pending' | 'synced' | 'failed';
+export type SyncStatus = 'not_configured' | 'pending' | 'synced' | 'failed' | 'imported';
 export interface User {
   id: string;
   name: string;
@@ -116,6 +116,8 @@ export interface GoalProgress {
 }
 
 export interface ConnecteamSetupStatus {
+  importReport?: ConnecteamImportReport | null;
+  importError?: string | null;
   configured: boolean;
   publishingEnabled: false;
   error: string | null;
@@ -127,6 +129,26 @@ export interface ConnecteamSetupStatus {
     existingShiftLinks: number;
     issues: string[];
   } | null;
+}
+export interface ConnecteamImportReport {
+  runId: string;
+  state: 'preview' | 'completed' | 'failed';
+  checkedAt: string;
+  scheduler: string;
+  schedulerId: number;
+  total: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  cancelled: number;
+  past: number;
+  upcoming: number;
+  restoredWorkers: number;
+  earliest: string | null;
+  latest: string | null;
+  issues: Array<{ remoteId: string; title: string; reason: string; start?: string }>;
+  unmatchedPortal: Array<{ id: string; description: string; start: string }>;
+  error?: string;
 }
 export interface SharedShiftUpdate {
   activities: string;

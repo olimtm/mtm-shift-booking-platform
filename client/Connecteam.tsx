@@ -111,6 +111,71 @@ export default function Connecteam({
         Existing roster entries need to be matched before publishing can be enabled, to avoid
         creating duplicate shifts.
       </p>
+      {status?.importError && <ErrorNotice>{status.importError}</ErrorNotice>}
+      {status?.importReport && (
+        <div className="connecteam-import-report">
+          <h3>One-off roster import</h3>
+          <p className="info-notice">
+            {status.importReport.state === 'completed'
+              ? 'Import completed. Connecteam took precedence for matched shifts.'
+              : 'Import preview ready. Portal shifts have not changed.'}{' '}
+            Automatic publishing is off.
+          </p>
+          <p>
+            {status.importReport.created} added · {status.importReport.updated} updated ·{' '}
+            {status.importReport.unchanged} already matched · {status.importReport.cancelled}{' '}
+            cancelled
+          </p>
+          <p>
+            {status.importReport.past} past shifts · {status.importReport.upcoming} upcoming shifts
+          </p>
+          <p className="field-hint">
+            {status.importReport.issues.length} Connecteam shifts need review or belong to other
+            jobs. {status.importReport.unmatchedPortal.length} unmatched portal requests preserved.
+          </p>
+          {(status.importReport.issues.length > 0 ||
+            status.importReport.unmatchedPortal.length > 0) && (
+            <details>
+              <summary>View import exceptions</summary>
+              <ul>
+                {status.importReport.issues.slice(0, 100).map((issue) => (
+                  <li key={issue.remoteId}>
+                    <strong>{issue.title || issue.remoteId}</strong>
+                    {issue.start
+                      ? ` · ${new Date(issue.start).toLocaleDateString('en-AU', { timeZone: data.timezone })}`
+                      : ''}
+                    : {issue.reason}
+                  </li>
+                ))}
+                {status.importReport.unmatchedPortal.slice(0, 100).map((shift) => (
+                  <li key={shift.id}>
+                    <strong>{shift.description}</strong> ·{' '}
+                    {new Date(shift.start).toLocaleDateString('en-AU', { timeZone: data.timezone })}
+                    : No definite Connecteam match; portal request preserved.
+                  </li>
+                ))}
+              </ul>
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  const url = URL.createObjectURL(
+                    new Blob([JSON.stringify(status.importReport, null, 2)], {
+                      type: 'application/json',
+                    }),
+                  );
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = 'connecteam-import-report.json';
+                  link.click();
+                  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+                }}
+              >
+                Download full import report
+              </button>
+            </details>
+          )}
+        </div>
+      )}
     </section>
   );
 }

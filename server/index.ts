@@ -11,6 +11,7 @@ const {
   refreshWorkers,
   refreshWorkHistory,
   connecteam,
+  connecteamImport,
   close,
 } = createApp();
 const port = Number(process.env.PORT ?? 3001);
@@ -32,6 +33,7 @@ const server = app.listen(port, '0.0.0.0', (error?: Error) => {
   console.log(`Support portal API listening on port ${port}.`);
 });
 const worker = setInterval(() => {
+  if (connecteamImport.isRunning()) return;
   void refreshParticipantActivity().catch(() => {});
   void refreshWorkers().catch(() => {});
   void refreshWorkHistory().catch(() => {});
@@ -40,13 +42,38 @@ const worker = setInterval(() => {
   );
 }, 30_000);
 worker.unref();
-void refreshParticipantActivity().catch(() => {});
-void refreshWorkers().catch(() => {});
-void refreshWorkHistory().catch(() => {});
-if (connecteam.configured())
-  void connecteam
-    .check()
-    .catch((error) => console.error('Connecteam read-only setup check:', error.message));
+async function startBackgroundWork() {
+  const mode = process.env.CONNECTEAM_IMPORT_MODE;
+  if (mode === 'preview' || mode === 'apply') {
+    try {
+      const report = await connecteamImport.run(mode, process.env.CONNECTEAM_IMPORT_RUN_ID || '');
+      if (report) {
+        const { issues, unmatchedPortal, ...summary } = report;
+        const reasons: Record<string, number> = {};
+        for (const issue of issues) reasons[issue.reason] = (reasons[issue.reason] || 0) + 1;
+        console.log(
+          'Connecteam one-off import:',
+          JSON.stringify({
+            ...summary,
+            omitted: issues.length,
+            unmatchedPortal: unmatchedPortal.length,
+            reasons,
+          }),
+        );
+      }
+    } catch (error) {
+      console.error('Connecteam one-off import:', (error as Error).message);
+    }
+  }
+  void refreshParticipantActivity().catch(() => {});
+  void refreshWorkers().catch(() => {});
+  void refreshWorkHistory().catch(() => {});
+  if (connecteam.configured())
+    void connecteam
+      .check()
+      .catch((error) => console.error('Connecteam read-only setup check:', error.message));
+}
+void startBackgroundWork();
 function stop() {
   clearInterval(worker);
   server.close(() => {
