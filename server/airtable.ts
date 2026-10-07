@@ -1,6 +1,8 @@
 import { LOCATION_MAX_LENGTH } from '../shared/limits.js';
 import type { Participant, Shift, StaffMember, SupportType } from '../shared/types.ts';
 import { outboundDispatcher } from './network.ts';
+import { DEFAULT_WORKER_STATUSES } from '../shared/views.ts';
+import type { WorkHistoryRecord } from './worker-history.ts';
 
 /** The PAT and all Airtable requests stay on the server. No configuration writes occur here. */
 type Environment = Record<string, string | undefined>;
@@ -1213,7 +1215,7 @@ export async function readAirtableStaff(
   const nameMapping = env.AIRTABLE_STAFF_NAME_FIELD?.trim() || 'Name';
   const statusMapping = env.AIRTABLE_STAFF_STATUS_FIELD?.trim() || 'Status';
   const archivedMapping = env.AIRTABLE_STAFF_ARCHIVED_FIELD?.trim() || 'Archived';
-  let activeStatuses = ['Active', 'Active - Volunteer'].map(normalizeLabel);
+  let activeStatuses = DEFAULT_WORKER_STATUSES.map(normalizeLabel);
   if (env.AIRTABLE_STAFF_ACTIVE_STATUSES) {
     try {
       const value: unknown = JSON.parse(env.AIRTABLE_STAFF_ACTIVE_STATUSES);
@@ -1338,4 +1340,150 @@ export async function readAirtableStaff(
     return { airtableId: record.id, name: trimmedName, active };
   });
   return { workers, staffRecords: config.staffRecords };
+}
+
+/** Read delivered work only; never fetch billing, expenses or participant notes. */
+export async function readAirtableWorkHistory(
+  env: Environment = process.env,
+): Promise<{ records: WorkHistoryRecord[]; omitted: number }> {
+  const config = requireConfiguration(env);
+  const metadata = await request<{ tables: MetadataTable[] }>(
+    config,
+    `meta/bases/${encodeURIComponent(config.baseId)}/tables`,
+  );
+  const tableName = env.AIRTABLE_WORK_HISTORY_TABLE?.trim() || '1:1 Log';
+  const table = metadata.tables?.find((t) => t.id === tableName || t.name === tableName);
+  const workerTable = metadata.tables?.find(
+    (t) =>
+      t.id === (env.AIRTABLE_STAFF_TABLE?.trim() || 'Staff') ||
+      t.name === (env.AIRTABLE_STAFF_TABLE?.trim() || 'Staff'),
+  );
+  const participantTable = metadata.tables?.find(
+    (t) => t.id === config.tables.participants || t.name === config.tables.participants,
+  );
+  const required: Record<string, string> = {
+    Start: 'dateTime',
+    End: 'dateTime',
+    'Progress Facilitator': 'multipleRecordLinks',
+    Participant: 'multipleRecordLinks',
+    Status: 'singleSelect',
+    'Is Live Shift': 'formula',
+  };
+  if (
+    !table ||
+    Object.entries(required).some(
+      ([name, type]) => !table.fields.some((f) => f.name === name && f.type === type),
+    ) ||
+    table.fields.find((f) => f.name === 'Progress Facilitator')?.options?.linkedTableId !==
+      workerTable?.id ||
+    table.fields.find((f) => f.name === 'Participant')?.options?.linkedTableId !==
+      participantTable?.id ||
+    !workerTable ||
+    !participantTable
+  )
+    throw new AirtableImportError(
+      'Check the 1:1 Log history fields and participant/staff links. Previous work-history counts are preserved.',
+    );
+  const rows = await readRecordsFromTable(config, table.id, Object.keys(required));
+  const records: WorkHistoryRecord[] = [];
+  const ids = new Set<string>();
+  let omitted = 0;
+  for (const row of rows) {
+    if (!isRecordId(row?.id) || ids.has(row.id) || !row.fields || typeof row.fields !== 'object')
+      throw new AirtableImportError(
+        'The work-history response is invalid. Previous counts are preserved.',
+      );
+    ids.add(row.id);
+    const f = row.fields,
+      status = f.Status;
+    if (status != null && typeof status !== 'string') {
+      omitted++;
+      continue;
+    }
+    // Blank statuses are legacy clock-out records. Planned and cancelled work is not delivered work.
+    if (status && normalizeLabel(status) !== 'completed') continue;
+    if (f['Is Live Shift'] === 0) continue;
+    const p = f.Participant,
+      w = f['Progress Facilitator'],
+      start = f.Start,
+      end = f.End;
+    if (
+      !Array.isArray(p) ||
+      p.length !== 1 ||
+      typeof p[0] !== 'string' ||
+      !isRecordId(p[0]) ||
+      !Array.isArray(w) ||
+      w.length !== 1 ||
+      typeof w[0] !== 'string' ||
+      !isRecordId(w[0]) ||
+      typeof start !== 'string' ||
+      typeof end !== 'string' ||
+      !Number.isFinite(Date.parse(start)) ||
+      !Number.isFinite(Date.parse(end)) ||
+      Date.parse(end) <= Date.parse(start) ||
+      f['Is Live Shift'] !== 1
+    ) {
+      omitted++;
+      continue;
+    }
+    records.push({ id: row.id, participantAirtableId: p[0], workerAirtableId: w[0], start, end });
+  }
+  return { records, omitted };
+}
+
+export interface ConnecteamMappings {
+  workers: Record<string, number>;
+  participants: Record<string, string>;
+  shifts: Record<string, string>;
+  issues: string[];
+}
+/** Existing external identities, keyed by Airtable record ID. No name matching. */
+export async function readAirtableConnecteamMappings(
+  env: Environment = process.env,
+): Promise<ConnecteamMappings> {
+  const config = requireConfiguration(env);
+  const metadata = await request<{ tables: MetadataTable[] }>(
+    config,
+    `meta/bases/${encodeURIComponent(config.baseId)}/tables`,
+  );
+  const result: ConnecteamMappings = { workers: {}, participants: {}, shifts: {}, issues: [] };
+  for (const [kind, tableName, fieldName, type] of [
+    ['workers', env.AIRTABLE_STAFF_TABLE?.trim() || 'Staff', 'Connecteam ID', 'number'],
+    ['participants', config.tables.participants, 'Connecteam Job ID', 'singleLineText'],
+    ['shifts', config.tables.shifts, 'Connecteam Shift ID', 'singleLineText'],
+  ] as const) {
+    const table = metadata.tables?.find((t) => t.id === tableName || t.name === tableName);
+    const field = table?.fields.find((f) => f.name === fieldName);
+    if (!table || field?.type !== type)
+      throw new AirtableImportError(
+        `Check ${tableName} > ${fieldName} before linking Connecteam. No records were changed.`,
+      );
+    const rows = await readRecordsFromTable(config, table.id, [field.name]);
+    const seen = new Map<string, string>();
+    for (const row of rows) {
+      if (!isRecordId(row?.id) || !row.fields)
+        throw new AirtableImportError(
+          'A Connecteam identity record could not be read. No records were changed.',
+        );
+      const value = row.fields[field.name];
+      if (value == null || value === '') continue;
+      if (
+        kind === 'workers'
+          ? typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0
+          : typeof value !== 'string' || !value.trim() || value.length > 200
+      ) {
+        result.issues.push(`${table.name} record ${row.id}: invalid ${field.name}.`);
+        continue;
+      }
+      const normalized = String(value).trim();
+      if (seen.has(normalized))
+        result.issues.push(
+          `${table.name}: records ${seen.get(normalized)} and ${row.id} share the same ${field.name}.`,
+        );
+      seen.set(normalized, row.id);
+      if (kind === 'workers') result.workers[row.id] = value as number;
+      else result[kind][row.id] = normalized;
+    }
+  }
+  return result;
 }

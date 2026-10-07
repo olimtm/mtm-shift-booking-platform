@@ -23,6 +23,26 @@
 }
 
 /* Worker portal and shared shift updates use the existing MTM palette. */
+.connecteam-card .integration-card-heading {
+  flex-wrap: wrap;
+}
+.connecteam-card .integration-card-heading > div {
+  flex: 1 1 150px;
+}
+.connecteam-card > .field-hint {
+  margin-top: 18px;
+}
+.worker-history-panel {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.worker-history-panel > div {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.worker-history-panel > button {
+  flex-shrink: 0;
+}
 .worker-portal {
   min-height: 100vh;
   background: var(--surface);

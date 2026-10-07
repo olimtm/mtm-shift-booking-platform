@@ -4,7 +4,15 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createApp } from './app.js';
 
-const { app, drainOutbox, refreshParticipantActivity, refreshWorkers, close } = createApp();
+const {
+  app,
+  drainOutbox,
+  refreshParticipantActivity,
+  refreshWorkers,
+  refreshWorkHistory,
+  connecteam,
+  close,
+} = createApp();
 const port = Number(process.env.PORT ?? 3001);
 if (!Number.isInteger(port) || port < 1 || port > 65535)
   throw new Error('PORT must be a valid port number.');
@@ -26,6 +34,7 @@ const server = app.listen(port, '0.0.0.0', (error?: Error) => {
 const worker = setInterval(() => {
   void refreshParticipantActivity().catch(() => {});
   void refreshWorkers().catch(() => {});
+  void refreshWorkHistory().catch(() => {});
   void drainOutbox().catch(() =>
     console.error('Airtable sync worker failed; queued changes are retained.'),
   );
@@ -33,6 +42,11 @@ const worker = setInterval(() => {
 worker.unref();
 void refreshParticipantActivity().catch(() => {});
 void refreshWorkers().catch(() => {});
+void refreshWorkHistory().catch(() => {});
+if (connecteam.configured())
+  void connecteam
+    .check()
+    .catch((error) => console.error('Connecteam read-only setup check:', error.message));
 function stop() {
   clearInterval(worker);
   server.close(() => {

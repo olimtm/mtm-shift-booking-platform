@@ -17,6 +17,7 @@
     "test:browser": "tsx scripts/browser-smoke.ts",
     "backup": "tsx scripts/backup.ts",
     "check:airtable": "tsx scripts/check-airtable.ts",
+    "check:connecteam": "tsx scripts/check-connecteam.ts",
     "test:accounts": "tsx scripts/browser-accounts.ts",
     "test:import": "tsx scripts/browser-import.ts",
     "test:qol": "tsx scripts/browser-qol.ts",

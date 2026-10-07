@@ -87,6 +87,14 @@ export interface IntegrationStatus {
   message: string;
 }
 export interface DashboardData {
+  connecteam?: ConnecteamSetupStatus;
+  workerHistory?: {
+    counts: Record<string, Record<string, number>>;
+    checkedAt: string | null;
+    error: string | null;
+    automatic: boolean;
+    omitted: number;
+  };
   shiftUpdates?: ShiftUpdate[];
   workerSync?: { checkedAt: string | null; error: string | null; automatic: boolean };
   participantActivity?: { checkedAt: string | null; error: string | null };
@@ -105,6 +113,20 @@ export interface GoalProgress {
   goal: string;
   progress: 'practised' | 'progress' | 'maintained' | 'needs_support';
   evidence: string;
+}
+
+export interface ConnecteamSetupStatus {
+  configured: boolean;
+  publishingEnabled: false;
+  error: string | null;
+  report: {
+    checkedAt: string;
+    scheduler: { schedulerId: number; name: string; isArchived: boolean; timezone?: string };
+    mappedWorkers: number;
+    mappedParticipants: number;
+    existingShiftLinks: number;
+    issues: string[];
+  } | null;
 }
 export interface SharedShiftUpdate {
   activities: string;

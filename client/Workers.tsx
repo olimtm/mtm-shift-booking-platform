@@ -19,7 +19,10 @@ export default function Workers({
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
-  const workers = data.staff.filter(isActiveWorker);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const workers = data.staff
+    .filter(isActiveWorker)
+    .sort((a, b) => a.name.localeCompare(b.name, 'en-AU', { sensitivity: 'base' }));
   const automatic = data.workerSync?.automatic;
   async function refreshWorkers() {
     setRefreshing(true);
@@ -61,7 +64,7 @@ export default function Workers({
       <div className="accounts-intro">
         <p>
           {automatic
-            ? 'Active staff and active volunteers sync from Airtable every five minutes.'
+            ? 'Active staff, active volunteers and staff pending superannuation entry sync from Airtable every five minutes.'
             : 'Add workers to assign shifts. Workers do not receive a portal login.'}
         </p>
         {automatic ? (
@@ -85,6 +88,40 @@ export default function Workers({
       )}
       {(refreshError || data.workerSync?.error) && (
         <ErrorNotice>{refreshError || data.workerSync?.error}</ErrorNotice>
+      )}
+      {automatic && (
+        <div className="info-notice worker-history-panel">
+          <div>
+            <strong>Work history</strong>
+            <p>
+              {data.workerHistory?.checkedAt
+                ? `Last refreshed ${new Date(data.workerHistory.checkedAt).toLocaleString('en-AU', { timeZone: data.timezone })}.`
+                : 'Airtable history has not loaded yet. Assignment counts currently use portal bookings only.'}
+            </p>
+            {!!data.workerHistory?.omitted && (
+              <p>{data.workerHistory.omitted} incomplete history records omitted.</p>
+            )}
+            {data.workerHistory?.error && <ErrorNotice>{data.workerHistory.error}</ErrorNotice>}
+          </div>
+          <button
+            className="secondary-button"
+            disabled={historyBusy}
+            onClick={async () => {
+              setHistoryBusy(true);
+              setRefreshError('');
+              try {
+                await post('/integrations/airtable/work-history', {});
+                await onSaved();
+              } catch (error) {
+                setRefreshError((error as Error).message);
+              } finally {
+                setHistoryBusy(false);
+              }
+            }}
+          >
+            {historyBusy ? <Spinner /> : <RefreshCw size={17} />}Refresh history
+          </button>
+        </div>
       )}
       {workers.length === 0 && (
         <Empty title="No active support workers">

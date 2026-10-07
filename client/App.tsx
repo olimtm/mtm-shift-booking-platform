@@ -50,6 +50,7 @@ import Schedule, { ShiftList } from './Schedule';
 import { EventDetail, EventForm, ParticipantForm, ShiftDetail, ShiftForm } from './forms';
 import Workers from './Workers';
 import WorkerPortal from './WorkerPortal';
+import Connecteam from './Connecteam';
 import ShiftUpdatesPage from './ShiftUpdates';
 import Brand from './Brand';
 import { isActiveParticipant, isPastSupport, shiftTitle } from '../shared/views';
@@ -63,6 +64,7 @@ type Page =
   | 'integration'
   | 'accounts'
   | 'workers'
+  | 'connecteam'
   | 'updates';
 const pageNames: Record<Page, string> = {
   schedule: 'Support schedule',
@@ -73,6 +75,7 @@ const pageNames: Record<Page, string> = {
   accounts: 'People & access',
   workers: 'Support workers',
   updates: 'Shift updates',
+  connecteam: 'Connecteam connection',
 };
 
 function Login({
@@ -485,6 +488,13 @@ export default function App() {
                 className={`connection-dot ${data.integration.configured ? 'connected' : ''}`}
               />
             </button>
+            <button
+              className={`nav-link ${page === 'connecteam' ? 'active' : ''}`}
+              onClick={() => navigate('connecteam')}
+            >
+              <Link2 size={19} />
+              <span>Connecteam</span>
+            </button>
           </>
         )}
         <div className="sidebar-bottom">
@@ -566,6 +576,7 @@ export default function App() {
             {page !== 'integration' &&
               page !== 'accounts' &&
               page !== 'workers' &&
+              page !== 'connecteam' &&
               page !== 'updates' && (
                 <button
                   className="primary-button new-request-button"
@@ -1031,6 +1042,7 @@ export default function App() {
             </>
           )}
           {page === 'updates' && <ShiftUpdatesPage data={data} onSaved={refresh} />}
+          {page === 'connecteam' && staff && <Connecteam data={data} onSaved={refresh} />}
           {page === 'workers' && staff && <Workers data={data} onSaved={refresh} />}
           {page === 'accounts' && staff && <Accounts data={data} />}
           {page === 'integration' && staff && (

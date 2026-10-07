@@ -14,7 +14,13 @@ The current form captures preferences; it does not certify a worker's driving ca
 
 ### Worker roster
 
-With Airtable connected, the portal refreshes the Staff roster at startup and every five minutes. **Active** and **Active - Volunteer** staff appear as assignable workers unless **Archived** is checked. Coordinators can use **Support workers → Refresh workers** to refresh immediately. Airtable controls worker names and activity; the portal controls assignments and approvals. Sync never grants a login.
+With Airtable connected, the portal refreshes the Staff roster at startup and every five minutes. **Active**, **Active - Volunteer** and **Pending Superannuation Xero Input** staff appear as assignable workers unless **Archived** is checked. The third status was approved on 7 October 2026; interviews and suspended staff remain excluded. Coordinators can use **Support workers → Refresh workers** to refresh immediately. Airtable controls worker names and activity; the portal controls assignments and approvals. Sync never grants a login.
+
+Assignment options display past-shift counts for that participant and sort by count descending, then worker name alphabetically. Counts combine completed/legacy clock-out entries from **1:1 Log** with ended, confirmed portal bookings. Exact duplicate log intervals count once. A portal booking overlapping a delivered log for the same participant/worker is not added again. Future, requested, declined and cancelled bookings are excluded; no names are used to infer identities. These are recorded-session counts, not attendance certification, and exclude unrelated group-event history. Split clock-out records with different intervals remain separate recorded sessions.
+
+History refreshes every five minutes and can be refreshed under **Support workers → Refresh history**. A failed refresh retains the last complete snapshot and shows a warning. Until the first successful refresh, counts use portal bookings only. Incomplete log entries are omitted and counted in the history status. Histories and counts are coordinator-only.
+
+See [Connecteam setup](CONNECTEAM.md) for the read-only connection check and the remaining steps before one-way publication to NSW can be enabled.
 
 Inactive, archived or deleted Airtable staff are excluded from new assignments. Existing bookings retain their worker and status until a coordinator changes them. Returning workers reuse their existing portal identity. Existing local workers remain available; matching names are never merged automatically. A failed refresh keeps the previous complete roster and displays an error on Support workers.
 

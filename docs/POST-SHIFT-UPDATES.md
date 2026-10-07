@@ -4,7 +4,7 @@ Workers use the existing portal address with their own email and password. Conne
 
 ## Invite a worker
 
-1. In **Support workers**, check that the worker is present and active. Airtable **Active** and **Active - Volunteer** staff are included unless archived.
+1. In **Support workers**, check that the worker is present and active. Airtable **Active**, **Active - Volunteer** and **Pending Superannuation Xero Input** staff are included unless archived.
 2. Open **People & access → Invite someone**. Enter the worker's name and email, choose **Support worker**, and select their existing worker record.
 3. Create the invitation link and send it privately using your usual communication channel. The link expires after 48 hours and can be used once. It is not emailed automatically.
 4. The worker follows the link, chooses a password and signs in. They see only confirmed or cancelled shifts assigned to that worker record. They cannot approve requests, change bookings or manage accounts.

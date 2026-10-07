@@ -1,4 +1,4 @@
-import { shiftTitle, isActiveParticipant, isActiveWorker } from '../shared/views';
+import { shiftTitle, isActiveParticipant, isActiveWorker, rankedWorkers } from '../shared/views';
 import { LOCATION_MAX_LENGTH } from '../shared/limits.js';
 import { useState, type FormEvent } from 'react';
 import {
@@ -475,12 +475,29 @@ export function ShiftDetail({
                   {worker.name} (inactive)
                 </option>
               )}
-              {data.staff.filter(isActiveWorker).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
+              {rankedWorkers(data.staff, data.workerHistory?.counts[shift.participantId]).map(
+                ({ worker: s, count }) => (
+                  <option key={s.id} value={s.id}>
+                    {count} {count === 1 ? 'shift' : 'shifts'} · {s.name}
+                  </option>
+                ),
+              )}
             </select>
+            <span className="field-hint">
+              Most past shifts together first, then alphabetical. Includes delivered 1:1 Log records
+              and past confirmed portal bookings.
+            </span>
+            {data.workerHistory?.automatic && !data.workerHistory.checkedAt && (
+              <span className="field-hint">
+                Airtable history has not loaded yet; counts currently use portal bookings only.
+              </span>
+            )}
+            {data.workerHistory?.error && (
+              <ErrorNotice>
+                Work history could not refresh. Counts may be out of date; use Support workers →
+                Refresh history to retry.
+              </ErrorNotice>
+            )}
             {worker && !isActiveWorker(worker) && (
               <span className="field-hint">
                 This worker is no longer active. The booking is unchanged; select an active worker

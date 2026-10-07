@@ -26,7 +26,12 @@ const schema = () => ({
           name: 'Status',
           type: 'singleSelect',
           options: {
-            choices: ['Active', 'Active - Volunteer', 'Inactive'].map((name) => ({ name })),
+            choices: [
+              'Active',
+              'Active - Volunteer',
+              'Pending Superannuation Xero Input',
+              'Inactive',
+            ].map((name) => ({ name })),
           },
         },
         { id: 'fldArchived', name: 'Archived', type: 'checkbox' },
@@ -150,6 +155,31 @@ test('invalid staff schema, records and pagination cannot produce a partial rost
   await assert.rejects(readAirtableStaff(env), /repeated pagination/);
   offset = false;
   await assert.rejects(readAirtableStaff(env), /invalid pagination/);
+});
+
+test('approved superannuation-pending status is assignable but interview, suspended and archived staff remain excluded', async (t) => {
+  const records = [
+    row(1, 'Payroll Pending', 'Pending Superannuation Xero Input'),
+    row(2, 'Suspended', 'Suspended'),
+    row(3, 'Applicant', 'Pending Interview'),
+    row(4, 'Archived', 'Pending Superannuation Xero Input', true),
+  ];
+  t.mock.method(globalThis, 'fetch', async (url: string) =>
+    Response.json(url.includes('/meta/') ? schema() : { records }),
+  );
+  assert.deepEqual(
+    (await readAirtableStaff(env)).workers.map((w) => w.active),
+    [true, false, false, false],
+  );
+  assert.deepEqual(
+    (
+      await readAirtableStaff({
+        ...env,
+        AIRTABLE_STAFF_ACTIVE_STATUSES: '["Active","Active - Volunteer"]',
+      })
+    ).workers.map((w) => w.active),
+    [false, false, false, false],
+  );
 });
 
 test('automatic worker refresh preserves booking identities, local workers and permissions through rename, removal and reactivation', async (t) => {

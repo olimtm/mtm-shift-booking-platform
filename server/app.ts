@@ -24,6 +24,8 @@ import { canReadShift, dashboardUpdates, installShiftUpdateRoutes } from './shif
 import { installAccountRoutes, setupRequired } from './accounts.js';
 import { seedDemo } from './seed.js';
 import { createWorkerSync } from './worker-sync.js';
+import { createConnecteamSetup } from './connecteam-setup.ts';
+import { createWorkHistorySync, savedWorkHistory, workTogetherCounts } from './worker-history.ts';
 import { isActiveWorker } from '../shared/views.js';
 import {
   allRsvps,
@@ -171,6 +173,8 @@ export function createApp(options: AppOptions = {}) {
     (options.enableSync ?? process.env.AIRTABLE_SYNC_ENABLED === 'true') && !demoMode;
   const configured = () => !demoMode && getAirtableStatus().configured;
   const refreshWorkers = createWorkerSync(store, configured);
+  const refreshWorkHistory = createWorkHistorySync(store, configured);
+  const connecteam = createConnecteamSetup(store, () => !demoMode);
   app.use('/api', (req: Request, res: Response, next: NextFunction) => {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.path !== '/webhooks/rsvp') {
       if (!req.headers.origin || !allowedOrigins.has(req.headers.origin))
@@ -367,6 +371,14 @@ export function createApp(options: AppOptions = {}) {
               error: store.meta('worker_sync_error') || null,
               automatic: configured(),
             },
+            workerHistory: {
+              counts: workTogetherCounts(participants, members, shifts, savedWorkHistory(store)),
+              checkedAt: store.meta('worker_history_checked') || null,
+              error: store.meta('worker_history_error') || null,
+              omitted: Number(store.meta('worker_history_omitted') || '0'),
+              automatic: configured(),
+            },
+            connecteam: connecteam.status(),
           }
         : {}),
       user,
@@ -1191,6 +1203,15 @@ export function createApp(options: AppOptions = {}) {
     }),
   );
   app.post(
+    '/api/integrations/airtable/work-history',
+    staff,
+    asyncRoute(async (_req, res) => {
+      if (!configured()) fail(409, 'Configure Airtable before refreshing work history.');
+      await refreshWorkHistory(true);
+      res.json({ message: 'Work history refreshed from Airtable.' });
+    }),
+  );
+  app.post(
     '/api/integrations/airtable/participants',
     staff,
     asyncRoute(async (_req, res) => {
@@ -1199,6 +1220,11 @@ export function createApp(options: AppOptions = {}) {
       await refreshParticipantActivity(true);
       res.json({ message: 'Participant statuses refreshed.' });
     }),
+  );
+  app.post(
+    '/api/integrations/connecteam/check',
+    staff,
+    asyncRoute(async (_req, res) => res.json(await connecteam.check())),
   );
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint not found.' }));
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -1216,6 +1242,8 @@ export function createApp(options: AppOptions = {}) {
     drainOutbox,
     refreshParticipantActivity,
     refreshWorkers,
+    refreshWorkHistory,
+    connecteam,
     close: () => store.close(),
   };
 }

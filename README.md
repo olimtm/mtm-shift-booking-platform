@@ -23,6 +23,8 @@ Demo data is retained in `.local/demo.sqlite`. Real data defaults to a separate 
 - Participant settings: general support, events, both, or none. None is hidden from the default roster but remains available for manual requests.
 - Browser-based first coordinator setup and People & access administration: invite clients/coordinators/workers, grant one or more participants to clients, link workers to their roster identity, issue single-use password links, and disable access. Creating a participant does not create a login.
 - Worker portal for assigned shifts and post-shift reports with activities, participant feedback and goal progress. Shared content publishes immediately to linked clients; internal handover/follow-up stays private. Corrections retain revision history. See [the worker guide](docs/POST-SHIFT-UPDATES.md).
+- Assignment choices show past-shift counts from delivered Airtable 1:1 Log records and past confirmed portal bookings, sorted by most together then alphabetically. Payroll-pending staff are included alongside active staff and volunteers.
+- Coordinator-only [Connecteam setup](docs/CONNECTEAM.md) checks NSW scheduler access and existing Airtable IDs without publishing shifts. Automatic outbound publishing is still pending credentials and roster reconciliation.
 - Event RSVPs create one request per eligible event/participant pair, with 30 minutes before and after. Retries preserve approvals; event changes and confirmed-shift cancellations require review.
 - Staff-only read-only Airtable schema audit and initial participant/event/shift/RSVP import. Outbound requests use a durable retry queue and stable upsert identifier.
 - Sydney time display and input, including daylight-saving handling; timestamps stored as UTC.

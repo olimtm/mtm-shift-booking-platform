@@ -394,6 +394,16 @@ test('publishing is immediate, scoped, versioned and never exposes internal note
       'a retried submission cannot duplicate or overwrite',
     );
     const family = (await parent<DashboardData>('GET', '/api/dashboard')).body;
+    assert.equal(family.workerHistory, undefined, 'worker-participant history is coordinator-only');
+    assert.equal(family.connecteam, undefined);
+    assert.equal((await parent('POST', '/api/integrations/connecteam/check', {})).status, 403);
+    assert.equal((await worker('POST', '/api/integrations/connecteam/check', {})).status, 403);
+    assert.equal(
+      (await worker<DashboardData>('GET', '/api/dashboard')).body.workerHistory,
+      undefined,
+    );
+    assert.equal((await parent('POST', '/api/integrations/airtable/work-history', {})).status, 403);
+    assert.equal((await worker('POST', '/api/integrations/airtable/work-history', {})).status, 403);
     assert.equal(family.shiftUpdates?.length, 1);
     assert.equal(family.shiftUpdates?.[0].goals[0].progress, 'progress');
     assert(!JSON.stringify(family).includes('PRIVATE_'));
